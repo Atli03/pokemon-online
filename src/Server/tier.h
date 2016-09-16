@@ -100,7 +100,7 @@ public:
     void addBanParent(Tier *t);
 
     bool isBanned(const PokeBattle &p) const;
-    QString bannedReason(const PokeBattle &p) const;
+    QString bannedReason(const PokeBattle &p, bool child = false) const;
     bool isRestricted(const PokeBattle &p) const;
     bool isValid(const TeamBattle &t) const;
     bool exists(const QString &name);
@@ -121,14 +121,18 @@ public:
 
     quint8 restricted(TeamBattle &t) const;
 
-    QString getBannedPokes() const;
+    QString getBannedPokes(bool parentNeeded = false) const;
     QString getRestrictedPokes() const;
     QString getBannedMoves() const;
     QString getBannedItems() const;
+    QString getBannedAbilities() const;
+    int getGeneration();
+    int getSubGeneration();
     void importBannedPokes(const QString &);
     void importRestrictedPokes(const QString &);
     void importBannedMoves(const QString &);
     void importBannedItems(const QString &);
+    void importBannedAbilities(const QString &);
 
     void exportDatabase() const;
     void processDailyRun();
@@ -149,6 +153,7 @@ public:
 
     int maxRestrictedPokes;
     int numberOfPokemons;
+    QString allowIllegal;
 
 protected:
     enum GetQueryType {
@@ -189,6 +194,7 @@ private:
     Tier *parent;
     QSet<int> bannedItems;
     QSet<int> bannedMoves;
+    QSet<int> bannedAbilities;
     QSet<Pokemon::uniqueId> bannedPokes;
     QSet<Pokemon::uniqueId> restrictedPokes;
     int mode; /* < 0 : any, otherwise specific mode */

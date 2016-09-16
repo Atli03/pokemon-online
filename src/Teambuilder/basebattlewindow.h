@@ -107,6 +107,7 @@ public slots:
 
     void sendMessage();
     void clickClose();
+    void openCalc();
     void delay(qint64 msec=0);
     void undelay();
     void playCry(int pokemon);
@@ -122,6 +123,7 @@ public slots:
 #else
     void criesProblem(Phonon::State newState);
 #endif
+    void alwaysOnTopChanged(bool state, bool save = true);
 protected:
     int ignoreSpecs;
 
@@ -134,11 +136,12 @@ protected:
     QGridLayout *mylayout;
     QScrollDownTextBrowser *mychat;
     QIRCLineEdit *myline;
-    QPushButton *myclose, *mysend, *myignore;
+    QPushButton *myclose, *mysend, *myignore, *mycalc;
 
     QCheckBox *saveLogs;
     QCheckBox *musicOn;
     QCheckBox *flashWhenMoveDone;
+    QCheckBox *alwaysOnTop;
 
 #ifdef QT5
     QMediaPlayer *audio;
@@ -183,6 +186,7 @@ protected:
     void addReplayData(const QByteArray &inf);
 
     void closeEvent(QCloseEvent *);
+
 };
 
 class BaseBattleWindowIns : public BaseBattleWindow, public BattleCommandManager<BaseBattleWindowIns>

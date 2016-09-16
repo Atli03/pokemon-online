@@ -212,7 +212,7 @@ void Client::initRelay()
     connect(relay, SIGNAL(battleStarted(int, Battle)), SLOT(battleStarted(int, Battle)));
     connect(relay, SIGNAL(battleFinished(int, int,int,int)), SLOT(battleFinished(int, int,int,int)));
     connect(relay, SIGNAL(battleMessage(int, QByteArray)), this, SLOT(battleCommand(int, QByteArray)));
-    connect(relay, SIGNAL(passRequired(QByteArray)), SLOT(askForPass(QByteArray)));
+    connect(relay, SIGNAL(passRequired(QByteArray, bool)), SLOT(askForPass(QByteArray, bool)));
     connect(relay, SIGNAL(serverPassRequired(QByteArray)), SLOT(serverPass(QByteArray)));
     connect(relay, SIGNAL(notRegistered(bool)), myregister, SLOT(setEnabled(bool)));
     connect(relay, SIGNAL(playerKicked(int,int)),SLOT(playerKicked(int,int)));
@@ -237,6 +237,7 @@ void Client::initRelay()
     connect(relay, SIGNAL(reconnectPassGiven(QByteArray)), SLOT(setReconnectPass(QByteArray)));
     connect(relay, SIGNAL(reconnectSuccess()), SLOT(cleanData()));
     connect(relay, SIGNAL(reconnectFailure(int)), SLOT(onReconnectFailure(int)));
+    connect(relay, SIGNAL(minHTMLGiven(int)), SLOT(changeMinHTMLAuth(int)));
 }
 
 class TierActionFactoryTeams : public TierActionFactory
@@ -1472,7 +1473,7 @@ QMenuBar * Client::createMenuBar(MainEngine *w)
     connect(oldBattleWindow, SIGNAL(triggered(bool)), SLOT(changeBattleWindow(bool)));
     oldBattleWindow->setChecked(globals.value("Battle/OldWindow", true).toBool());
 
-    QAction *useBalls = battleMenu->addAction(tr("Use Ball Icons"));
+    QAction *useBalls = battleMenu->addAction(tr("Use Pokéball Icons"));
     useBalls->setCheckable(true);
     connect(useBalls, SIGNAL(triggered(bool)), SLOT(useBallIcons(bool)));
     useBalls->setChecked(globals.value("Battle/UseBalls").toBool());
@@ -1563,29 +1564,41 @@ void Client::playerTempBanned(int dest, int src, int time)
     printHtml(toBoldColor(mess, Qt::red));
 }
 
-void Client::askForPass(const QByteArray &salt) {
+void Client::askForPass(const QByteArray &salt, bool registerRequest, bool repeat) {
 
     QString pass;
+    QString check;
     QStringList warns;
     bool ok = wallet.retrieveUserPassword(relay().getIp(), serverName, (secondTeam.name().isEmpty() ? myteam->name() : secondTeam.name()), salt, pass, warns);
+    if (repeat) {
+        warns.append("Your passwords did not match, try again");
+    }
     if (!warns.empty()) warns.prepend(""); // for join()
 
     /* Create a dialog for password input */
     QDialog dialog(this);
     dialog.setObjectName("passwordDialog");
-    dialog.setWindowTitle(tr("Enter your password"));
+    dialog.setWindowTitle(registerRequest ? tr("Register a password") : tr("Enter your password"));
     QVBoxLayout* layout = new QVBoxLayout;
     // Label
-    layout->addWidget(new QLabel(tr("<html>Enter the password for your current name.<br/>"
+    if (registerRequest) {
+        layout->addWidget(new QLabel(tr("<html>Register a password for the current name.<br/>") + "<span style='color:red;'>" + warns.join("<br/>") + "</span></html>"));
+    } else {
+        layout->addWidget(new QLabel(tr("<html>Enter the password for your current name.<br/>"
                                     "If you don't have it, the name you have chosen might be already taken."
-                                    " Choose different name.<br/>"
-                                    "<br/>It is advised to use a slightly different password for each server."
-                                    " (The server only sees the encrypted form of the pass, but still...)")
+                                    " Choose a different name.<br/>")
                                  + "<span style='color:red;'>" + warns.join("<br/>") + "</span></html>"));
+    }
     // Password input
     QLineEdit *passEdit = new QLineEdit;
+    QLineEdit *checkEdit = new QLineEdit;
+    checkEdit->setEchoMode(QLineEdit::Password);
     passEdit->setEchoMode(QLineEdit::Password);
     layout->addWidget(passEdit);
+    if (registerRequest) {
+        layout->addWidget(new QLabel(tr("<html>Type your password again</html>")));
+        layout->addWidget(checkEdit);
+    }
 
     // Save pass
     QCheckBox *savePass = new QCheckBox;
@@ -1611,6 +1624,12 @@ void Client::askForPass(const QByteArray &salt) {
         return;
     }
     pass = passEdit->text();
+    if (registerRequest) {
+        check = checkEdit->text();
+        if (pass != check) {
+            askForPass(salt, true, true);
+        }
+    }
     if (savePass->isChecked()) {
         // TODO: ipv6 support in the future
         wallet.saveUserPassword(relay().getIp(), serverName, myteam->name(), salt, pass);
@@ -1642,6 +1661,12 @@ void Client::onReconnectFailure(int reason)
     }
     failedBefore = true;
 }
+
+void Client::changeMinHTMLAuth(int auth)
+{
+    minHTMLauth = auth;
+}
+
 void Client::newConnection() {
     printLine(tr("Attempting a new connection."));
     foreach(Channel *chan, mychannels) {
@@ -2935,6 +2960,7 @@ void Client::changeExitWarning(bool show)
 {
     exitWarning = show;
     globals.setValue("Client/ShowExitWarning", show);
+    emit exitWarningChanged(show);
 }
 
 void Client::showExitWarning()

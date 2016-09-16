@@ -582,14 +582,14 @@ void ScriptEngine::afterChallengeIssued(int src, int dest, const ChallengeInfo &
     makeEvent("afterChallengeIssued", src, dest, c.clauses, c.rated, c.mode, c.team, c.desttier);
 }
 
-bool ScriptEngine::beforeBattleMatchup(int src, int dest, const ChallengeInfo &c)
+bool ScriptEngine::beforeBattleMatchup(int src, int dest, const ChallengeInfo &c, int team1, int team2)
 {
-    return makeSEvent("beforeBattleMatchup", src, dest, c.clauses, c.rated, c.mode);
+    return makeSEvent("beforeBattleMatchup", src, dest, c.clauses, c.rated, c.mode, team1, team2);
 }
 
-void ScriptEngine::afterBattleMatchup(int src, int dest, const ChallengeInfo &c)
+void ScriptEngine::afterBattleMatchup(int src, int dest, const ChallengeInfo &c, int team1, int team2)
 {
-    makeEvent("afterBattleMatchup", src, dest, c.clauses, c.rated, c.mode);
+    makeEvent("afterBattleMatchup", src, dest, c.clauses, c.rated, c.mode, team1, team2);
 }
 
 
@@ -1206,6 +1206,11 @@ void ScriptEngine::reloadDosSettings()
 {
     QSettings s("config", QSettings::IniFormat);
     AntiDos::obj()->init(s);
+}
+
+void ScriptEngine::clearDosIP(const QString &ip)
+{
+    AntiDos::obj()->clearIP(ip);
 }
 
 QScriptValue ScriptEngine::currentMod()
@@ -1963,6 +1968,16 @@ bool ScriptEngine::hasTeamPoke(int id, int team, int pokemonnum)
         return false;
     }
     return false;
+}
+
+bool ScriptEngine::teamPokeIllegal(int id, int team, int slot)
+{
+    if (!testPlayer("teamPokeIllegal(id, team, slot)", id) || !testTeamCount("teamPokeIllegal(id, team, slot)", id, team)
+            || !testRange("teamPokeIllegal(id, team, slot)", slot, 0, 5)) {
+        return false;
+    }
+
+    return myserver->player(id)->team(team).poke(slot).illegal();
 }
 
 QScriptValue ScriptEngine::indexOfTeamPoke(int id, int team, int pokenum)
@@ -3865,6 +3880,85 @@ bool ScriptEngine::validColor(const QString &color)
     QColor colorName = QColor(color);
 
     return colorName.isValid();
+}
+
+void ScriptEngine::killBattleServer()
+{
+    myserver->scriptKillBattleServer();
+}
+
+bool ScriptEngine::isPokeBannedFromTier(int pokeid, const QString &tier) {
+    if (TierMachine::obj()->exists(tier)) {
+        Tier & t = TierMachine::obj()->tier(tier);
+        QStringList banned = t.getBannedPokes(true).split(", ");
+        return banned.contains(PokemonInfo::Name(pokeid));
+    }
+    warn("isPokeBannedFromTier(pokeid, tier)", "not a valid tier", true);
+    return false;
+}
+
+bool ScriptEngine::isAbilityBannedFromTier(int abid, const QString &tier) {
+    if (TierMachine::obj()->exists(tier)) {
+        Tier & t = TierMachine::obj()->tier(tier);
+        QStringList banned = t.getBannedAbilities().split(", ");
+        return banned.contains(AbilityInfo::Name(abid));
+    }
+    warn("isAbilityBannedFromTier(abilityid, tier)", "not a valid tier", true);
+    return false;
+}
+
+bool ScriptEngine::isItemBannedFromTier(int itemid, const QString &tier) {
+    if (TierMachine::obj()->exists(tier)) {
+        Tier & t = TierMachine::obj()->tier(tier);
+        QStringList banned = t.getBannedItems().split(", ");
+        return banned.contains(ItemInfo::Name(itemid));
+    }
+    warn("isItemBannedFromTier(itemid, tier)", "not a valid tier", true);
+    return false;
+}
+
+bool ScriptEngine::isMoveBannedFromTier(int moveid, const QString &tier) {
+    if (TierMachine::obj()->exists(tier)) {
+        Tier & t = TierMachine::obj()->tier(tier);
+        QStringList banned = t.getBannedMoves().split(", ");
+        return banned.contains(MoveInfo::Name(moveid));
+    }
+    warn("isMoveBannedFromTier(moveid, tier)", "not a valid tier", true);
+    return false;
+}
+
+bool ScriptEngine::isAesthetic(int pokeid) {
+    if (PokemonInfo::Exists(pokeid)) {
+        return PokemonInfo::IsAesthetic(pokeid);
+    }
+    warn("isAesthetic(pokeid)", "not a valid pokemon", true);
+    return false;
+}
+
+int ScriptEngine::stoneForForme(int pokeid) {
+    if (PokemonInfo::Exists(pokeid)) {
+        return ItemInfo::StoneForForme(pokeid);
+    }
+    warn("stoneForForme(pokeid)", "not a valid pokemon", true);
+    return false;
+}
+
+int ScriptEngine::generationOfTier(const QString &tier) {
+    if (TierMachine::obj()->exists(tier)) {
+        Tier & t = TierMachine::obj()->tier(tier);
+        return t.getGeneration();
+    }
+    warn("generationOfTier(tier)", "not a valid tier", true);
+    return -1;
+}
+
+int ScriptEngine::subGenerationOfTier(const QString &tier) {
+    if (TierMachine::obj()->exists(tier)) {
+        Tier & t = TierMachine::obj()->tier(tier);
+        return t.getSubGeneration();
+    }
+    warn("subGenerationOfTier(tier)", "not a valid tier", true);
+    return -1;
 }
 
 QScriptValue ScriptEngine::enableStrict(QScriptContext *, QScriptEngine *e)

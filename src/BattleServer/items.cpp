@@ -212,6 +212,14 @@ struct IMBoostPokeStat : public IM
     }
     static void sm(int s,int, BS &b) {
         int num = b.pokenum(s).pokenum;
+        //Hackmons transforming should retain their boost
+        if (poke(b,s).contains("PreTransformPoke")) {
+            int num2 = PokemonInfo::Number(poke(b,s).value("PreTransformPoke").toString()).pokenum;
+            //But not Ditto!
+            if (num2 != Pokemon::Ditto) {
+                num = num2;
+            }
+        }
         QStringList args = poke(b,s)["ItemArg"].toString().split('_');
         if(!args[0].split('/').contains(QString::number(num))) {
             return;
@@ -235,17 +243,29 @@ struct IMBoostCategory : public IM
     }
 };
 
+/* Charcoal, Miracle Seed, Mystic Water, etc. */
 struct IMBoostType : public IM
 {
     IMBoostType() {
-        functions["BasePowerModifier"] = &bpm;
+        functions["BasePowerModifier"] = &bpm; // everything else (for now)
+        functions["Mod2Modifier"] = &m2m; // gsc
     }
+
     static void bpm(int s, int, BS &b) {
+        if (b.gen().num == 2) {
+            return;
+        }
         if (tmove(b,s).type == poke(b,s)["ItemArg"]) {
             if (b.gen() >= 4)
                 b.chainBp(s, 819);
             else
                 b.chainBp(s, 409);
+        }
+    }
+
+    static void m2m(int s, int, BS &b) {
+        if (b.gen().num == 2) {
+            turn(b, s)["ItemMod2Modifier"] = 1;
         }
     }
 };
@@ -266,8 +286,8 @@ struct IMZoomLens : public IM
 struct IMStatusOrb : public IM
 {
     IMStatusOrb() {
-        functions["EndTurn6.7"] = &et; /* Gen 4 */
-        functions["EndTurn26.2"] = &et; /* Gen 5 */
+        functions["EndTurn6.8"] = &et; /* Gen 4 */
+        functions["EndTurn28.2"] = &et; /* Gen 5 */
     }
 
     static void et(int s, int, BS &b) {
@@ -386,13 +406,15 @@ struct IMPokeTypeBoost : public IM
     IMPokeTypeBoost() {
         functions["BasePowerModifier"] = &bpm;
     }
-    static void bpm(int s, int, BS &b) {
-        QStringList args = poke(b,s)["ItemArg"].toString().split('_');
-        QStringList pokes = args[0].split('/');
-        if (!pokes.contains(QString::number(b.pokenum(s).pokenum)))
-            return;
 
-        int type = tmove(b,s).type;
+    static void bpm(int s, int, BS &b) {
+        QStringList args = poke(b, s)["ItemArg"].toString().split('_');
+        QStringList pokes = args[0].split('/');
+        if (!pokes.contains(QString::number(b.pokenum(s).pokenum))) {
+            return;
+        }
+
+        int type = tmove(b, s).type;
         for (int i = 1; i < args.size(); i++) {
             if (type == args[i].toInt())
                 b.chainBp(s, 819);
@@ -403,8 +425,8 @@ struct IMPokeTypeBoost : public IM
 struct IMStickyBarb : public IM
 {
     IMStickyBarb() {
-        functions["EndTurn6.19"] = &et; /* Gen 4 */
-        functions["EndTurn26.2"] = &et; /* Gen 5 */
+        functions["EndTurn6.20"] = &et; /* Gen 4 */
+        functions["EndTurn28.2"] = &et; /* Gen 5 */
         functions["UponPhysicalAssault"] = &upa;
     }
 
@@ -585,7 +607,12 @@ struct IMEviolite : public IM
     }
 
     static void sm(int s, int, BS &b) {
-        if (PokemonInfo::HasEvolutions(b.poke(s).num().pokenum) && b.poke(s).num() != Pokemon::Floette_EF) {
+        Pokemon::uniqueId  id = b.poke(s).num();
+        //Eviolite Chansey with Transform gets boost. Smeargle transforming into a Chansey doesn't though.
+        if (poke(b,s).contains("PreTransformPoke")) {
+            id = PokemonInfo::Number(poke(b,s).value("PreTransformPoke").toString());
+        }
+        if (PokemonInfo::HasEvolutions(id.pokenum) && id != Pokemon::Floette_EF) {
             turn(b,s)["Stat2ItemModifier"] = 10;
             turn(b,s)["Stat4ItemModifier"] = 10;
         }
@@ -704,7 +731,7 @@ struct IMRedCard : public IM
         int s = turn(b,t)["RedCardUser"].toInt();
         if (b.koed(s) || b.koed(t) || turn(b,t)["RedCardGiverCount"] != slot(b,s)["SwitchCount"])
             return;
-        if (!b.hasWorkingItem(s, Item::RedCard))
+        if (!b.hasWorkingItem(s, Item::RedCard) && turn(b,s).value("LostItem") != Item::RedCard)
             return;
 
         int target = b.player(t);
@@ -761,7 +788,7 @@ struct IMEscapeButton : public IM
 
         for (unsigned i = 0; i < speeds.size(); i++) {
             int p = speeds[i];
-            if (!b.hasWorkingItem(p, Item::EscapeButton))
+            if (!b.hasWorkingItem(p, Item::EscapeButton) && turn(b,p).value("LostItem") != Item::EscapeButton)
                 continue;
             if (!turn(b,p).contains("EscapeButtonActivated"))
                 continue;

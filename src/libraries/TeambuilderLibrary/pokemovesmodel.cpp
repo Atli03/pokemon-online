@@ -13,28 +13,35 @@ QHash<typename T::value_type, U> map_container_with_value(T container, const U &
     return ret;
 }
 
-PokeMovesModel::PokeMovesModel(const Pokemon::uniqueId &id, Pokemon::gen gen, QObject *parent) : QAbstractTableModel(parent), id(id), gen(gen)
+PokeMovesModel::PokeMovesModel(const Pokemon::uniqueId &id, Pokemon::gen gen, QObject *parent, bool hackmons) : QAbstractTableModel(parent), id(id), gen(gen), hackmons(hackmons)
 {
     loadData();
 }
 
-QHash<int, QString> getMoves(const Pokemon::uniqueId &num, Pokemon::gen gen, bool root = true) {
+QHash<int, QString> getMoves(const Pokemon::uniqueId &num, Pokemon::gen gen, bool root = true, bool hackmons = false) {
     QHash<int, QString> ret;
-    if (gen.num != 1 && gen.num != 3) {
-        ret = getMoves(num, Pokemon::gen(gen.num-1, GenInfo::NumberOfSubgens(gen.num-1)-1), false);
+    if (!hackmons) {
+        if (gen.num != 1 && gen.num != 3) {
+            ret = getMoves(num, Pokemon::gen(gen.num-1, GenInfo::NumberOfSubgens(gen.num-1)-1), false);
+        }
+        return ret.unite(map_container_with_value(PokemonInfo::TMMoves(num, gen), root ? QObject::tr("TM/HM") : QObject::tr("%1G TM/HM").arg(gen.num)))
+                  .unite(map_container_with_value(PokemonInfo::TutorMoves(num, gen), root ? QObject::tr("Tutor") : QObject::tr("%1G Tutor").arg(gen.num)))
+                  .unite(map_container_with_value(PokemonInfo::LevelMoves(num, gen), root ? QObject::tr("Level") : QObject::tr("%1G Level").arg(gen.num)))
+                  .unite(map_container_with_value(PokemonInfo::PreEvoMoves(num, gen), root ? QObject::tr("Pre Evo") :QObject:: tr("%1G Pre Evo").arg(gen.num)))
+                  .unite(map_container_with_value(PokemonInfo::EggMoves(num, gen), root ? QObject::tr("Breeding") : QObject::tr("%1G Breeding").arg(gen.num)))
+                  .unite((gen.num == 5 ? map_container_with_value(PokemonInfo::dreamWorldMoves(num, gen), QObject::tr("Dream World")) : QHash<int, QString>()))
+                  .unite(map_container_with_value(PokemonInfo::SpecialMoves(num, gen), root ? QObject::tr("Special", "Learning") : QObject::tr("%1G Special").arg(gen.num)));
+    } else {
+        QSet<int> allMoves = MoveInfo::Moves(gen);
+        allMoves.remove(Move::NoMove);
+        allMoves.remove(Move::Struggle);
+        return ret = map_container_with_value(allMoves, QObject::tr("Hackmons"));
     }
-    return ret.unite(map_container_with_value(PokemonInfo::TMMoves(num, gen), root ? QObject::tr("TM/HM") : QObject::tr("%1G TM/HM").arg(gen.num)))
-              .unite(map_container_with_value(PokemonInfo::TutorMoves(num, gen), root ? QObject::tr("Tutor") : QObject::tr("%1G Tutor").arg(gen.num)))
-              .unite(map_container_with_value(PokemonInfo::LevelMoves(num, gen), root ? QObject::tr("Level") : QObject::tr("%1G Level").arg(gen.num)))
-              .unite(map_container_with_value(PokemonInfo::PreEvoMoves(num, gen), root ? QObject::tr("Pre Evo") :QObject:: tr("%1G Pre Evo").arg(gen.num)))
-              .unite(map_container_with_value(PokemonInfo::EggMoves(num, gen), root ? QObject::tr("Breeding") : QObject::tr("%1G Breeding").arg(gen.num)))
-              .unite((gen.num == 5 ? map_container_with_value(PokemonInfo::dreamWorldMoves(num, gen), QObject::tr("Dream World")) : QHash<int, QString>()))
-              .unite(map_container_with_value(PokemonInfo::SpecialMoves(num, gen), root ? QObject::tr("Special", "Learning") : QObject::tr("%1G Special").arg(gen.num)));
 }
 
 void PokeMovesModel::loadData()
 {
-    QHash<int, QString> sets = getMoves(id, gen);
+    QHash<int, QString> sets = getMoves(id, gen, true, hackmons);
     storage.clear();
 
     foreach(int key, sets.uniqueKeys()) {
@@ -162,7 +169,14 @@ QVariant PokeMovesModel::data(const QModelIndex &index, int role) const
     case CustomModel::MovenumRole:
         return movenum;
     case Qt::ToolTipRole:
-        return MoveInfo::Description(movenum, gen);
+        QString tip = MoveInfo::Description(movenum, gen);
+        //Defaults to "Deals normal damage." if no description is defined.
+        if (tip.length() == 0) {
+            tip = MoveInfo::Description(1, gen);
+        }
+        //Hack to make the tooltip wrap, especially for long descriptions like Substitue or Thunder.
+        return QString("<FONT>%1</FONT>").arg(tip);
+
     }
 
     return QVariant();

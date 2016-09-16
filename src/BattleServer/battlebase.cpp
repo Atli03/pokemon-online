@@ -34,6 +34,8 @@ void BattleBase::init(const BattlePlayer &p1, const BattlePlayer &p2, const Chal
     teamCount = p1.teamCount;
     restricted[0] = p1.restrictedPokes;
     restricted[1] = p2.restrictedPokes;
+    bannedPokes[0] = p1.bannedPokes.split(", ");
+    bannedPokes[1] = p2.bannedPokes.split(", ");
     ratings[0] = p1.rating;
     ratings[1] = p2.rating;
     winMessage[0] = p1.win;
@@ -42,6 +44,7 @@ void BattleBase::init(const BattlePlayer &p1, const BattlePlayer &p2, const Chal
     loseMessage[1] = p2.lose;
     tieMessage[0] = p1.tie;
     tieMessage[1] = p2.tie;
+    allowIllegal = (p1.allowIllegal || p2.allowIllegal);
     attacked() = -1;
     attacker() = -1;
     selfKoer() = -1;
@@ -81,8 +84,8 @@ void BattleBase::init(const BattlePlayer &p1, const BattlePlayer &p2, const Chal
     }
 
     if (clauses() & ChallengeInfo::ChallengeCup) {
-        team(0).generateRandom(gen());
-        team(1).generateRandom(gen());
+        team(0).generateRandom(gen(), allowIllegal);
+        team(1).generateRandom(gen(), allowIllegal);
     } else {
         /* Make sure teams are valid and koed pokemon are pushed to the back */
         for (int i = 0; i < 2; i++) {
@@ -1658,6 +1661,9 @@ void BattleBase::koPoke(int player, int source, bool straightattack)
     qint16 damage = poke(player).lifePoints();
 
     changeHp(player, 0);
+    if (pokeMemory(slot(player)).contains("PreTransformPoke")) {
+        changeForme(player,slotNum(player),PokemonInfo::Number(pokeMemory(slot(player)).value("PreTransformPoke").toString()));
+    }
 
     if (straightattack) {
         notify(this->player(player), StraightDamage,player, qint16(damage));
@@ -1790,6 +1796,13 @@ void BattleBase::analyzeChoice(int slot)
 
 void BattleBase::sendBack(int player, bool silent)
 {
+    if (pokeMemory(player).contains("PreTransformPoke")) {
+        changeForme(this->player(player),slotNum(player),PokemonInfo::Number(pokeMemory(player).value("PreTransformPoke").toString()));
+    }
+    //If you primal evolve and die or are forced out on the same turn, the new pokemon's ability isn't loaded without unloading primal forme.
+    if (turnMemory(player).contains("PrimalForme")) {
+        turnMemory(player).remove("PrimalForme");
+    }
     notify(All, SendBack, player, silent);
 }
 
@@ -1892,7 +1905,7 @@ void BattleBase::inflictConfusedDamage(int player)
 
     int randnum;
     int damage;
-    if (gen().num == 1) {
+    if (gen().num <= 2) {
         randnum = randint(38) + 217;
         damage = (((std::min(((level * 2 / 5) + 2) * power, 65535) *
                    att / def) / 50) + 2) * randnum/255;
@@ -1905,8 +1918,10 @@ void BattleBase::inflictConfusedDamage(int player)
     /* If both you and your opponent have subs, the miss "recoil" will be dealt to the opponent's sub
      * If only you have a sub, the recoil damage is discarded */
     if (hasSubstitute(player)) {
-        if (hasSubstitute(opponent(player))) {
-            inflictDamage(opponent(player), damage, player, true, gen() <= 1); //in RBY the damage is to the sub
+        if (hasSubstitute(opponent(player)) && gen().num == 1) {
+            inflictDamage(opponent(player), damage, player, true, true); //in RBY the damage is to the sub
+        } else {
+            inflictDamage(player, damage, player, true, false); // otherwise the damage is dealt to the pokemon
         }
     } else {
         inflictDamage(player, damage, player, true, gen() <= 1); //in RBY the damage is to the sub
@@ -1933,11 +1948,13 @@ void BattleBase::changePP(int player, int move, int PP)
     }
     poke(player).move(move).PP() = PP;
     notify(this->player(player), ChangePP, player, quint8(move), quint8(this->PP(player, move)));
+    notify(All, UsePP, player, qint16(this->move(player, move)), quint8(PP));
 }
 
 bool BattleBase::testFail(int player)
 {
     if (turnMem(player).failed() == true) {
+        pokeMemory(player).remove("ProteanActivated");
         /* Silently or not ? */
         notify(All, Failed, player, !turnMem(player).failingMessage());
         return true;
@@ -2044,6 +2061,10 @@ void BattleBase::testCritical(int player, int target)
     PokeFraction critChance(up, down);
     int randnum = randint(512);
     int baseSpeed = PokemonInfo::BaseStats(fpoke(player).id, gen()).baseSpeed();
+    //Transformed Pokemon use the original form's base speed.
+    if (pokeMemory(slot(player)).contains("PreTransformPoke")) {
+        baseSpeed = PokemonInfo::BaseStats(PokemonInfo::Number(pokeMemory(slot(player)).value("PreTransformPoke").toString()), gen()).baseSpeed();;
+    }
     bool critical = randnum < std::min(510, baseSpeed * critChance);
 
     if (critical) {
@@ -2106,9 +2127,14 @@ void BattleBase::testFlinch(int player, int target)
 {
     int rate = tmove(player).flinchRate;
 
-    if (rate && coinflip(rate*255/100, 256)) {
-        turnMem(target).add(TM::Flinched);
-        pokeMemory(target).remove("Recharging"); //Flinch remove Recharge Turn for Hyper Beam in RBY
+    if (rate) {
+        if (gen() > 1) {
+            rate = rate*255/100;
+        }
+        if (coinflip(rate, 256)) {
+            turnMem(target).add(TM::Flinched);
+            pokeMemory(target).remove("Recharging"); //Flinch remove Recharge Turn for Hyper Beam in RBY
+        }
     }
 }
 
@@ -2258,6 +2284,7 @@ bool BattleBase::canSendPreventSMessage(int, int attacker)
 
 void BattleBase::inflictStatus(int player, int status, int attacker, int minTurns, int maxTurns)
 {
+    bool hb = pokeMemory(player).contains("Recharging") && poke(player).status() != Pokemon::Asleep && status == Pokemon::Asleep;
     //fixme: mist + intimidate
     if (poke(player).status() != Pokemon::Fine) {
         if (this->attacker() == attacker &&
@@ -2265,12 +2292,16 @@ void BattleBase::inflictStatus(int player, int status, int attacker, int minTurn
                  tmove(attacker).classification == Move::StatAndStatusMove) && canSendPreventSMessage(player, attacker)) {
             if (poke(player).status() == status) {
                 notify(All, AlreadyStatusMessage, player, quint8(poke(player).status()));
-            }
-            else {
-                notify(All, Failed, player);
+                return;
+            } else {
+                if (!hb) {
+                    notify(All, Failed, player);
+                }
             }
         }
-        return;
+        if (!hb) {
+            return;
+        }
     }
     if (!canGetStatus(player, status))
         return;
@@ -2282,7 +2313,9 @@ void BattleBase::inflictStatus(int player, int status, int attacker, int minTurn
             return;
         } else {
             currentForcedSleepPoke[this->player(player)] = currentInternalId(player);
-            pokeMemory(player).remove("Recharging"); //For RBY Hyper Beam
+            if (pokeMemory(player).contains("Recharging")) {
+                pokeMemory(player).remove("Recharging"); //For RBY Hyper Beam
+            }
         }
     } else if (status == Pokemon::Frozen)
     {
@@ -2293,6 +2326,9 @@ void BattleBase::inflictStatus(int player, int status, int attacker, int minTurn
                     return;
                 }
             }
+        }
+        if (pokeMemory(player).contains("Recharging")) {
+            pokeMemory(player).remove("Recharging"); //For RBY Hyper Beam
         }
     }
 
@@ -2386,6 +2422,10 @@ Pokemon::uniqueId BattleBase::pokenum(int player) {
 void BattleBase::changeForme(int player, int poke, const Pokemon::uniqueId &newforme)
 {
     PokeBattle &p  = this->poke(player,poke);
+    if (p.num() == newforme) {
+        //Prevents crashes from pokemon accidentally turning into the same forme
+        return;
+    }
     if (!pokeMemory(player).contains("PreTransformPoke")) {
         pokeMemory(player)["PreTransformPoke"] = PokemonInfo::Name(p.num());
     }
@@ -2400,4 +2440,9 @@ void BattleBase::changeForme(int player, int poke, const Pokemon::uniqueId &newf
 
     notify(All, ChangeTempPoke, player, quint8(DefiniteForme), quint8(poke), newforme);
     notify(player, ChangeTempPoke, player, quint8(TempAbility), quint8(poke), p.ability());
+}
+
+bool BattleBase::isStadium() const
+{
+    return gen() == Gen::Stadium || gen() == Gen::StadiumWithTradebacks;
 }

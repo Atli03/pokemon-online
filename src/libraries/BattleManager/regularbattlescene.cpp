@@ -26,14 +26,14 @@ RegularBattleScene::RegularBattleScene(battledata_ptr dat, BattleDefaultTheme *t
     updateTimers();
 }
 
-QHBoxLayout* RegularBattleScene::createTeamLayout(QLabel **labels)
+QGridLayout* RegularBattleScene::createTeamLayout(QLabel **labels)
 {
-    QHBoxLayout *foeteam = new QHBoxLayout();
-    foeteam->addStretch(240);
+    QGridLayout *foeteam = new QGridLayout();
+    //foeteam->addStretch(240);
     for (int i = 0; i < 6; i++) {
         labels[i] = new QLabel();
         labels[i]->setPixmap(gui.theme->statusIcon(Pokemon::Fine));
-        foeteam->addWidget(labels[i],0,Qt::AlignTop);
+        foeteam->addWidget(labels[i],(int)i/2,i%2,1,1,Qt::AlignTop);
     }
     foeteam->setSpacing(0);
 
@@ -92,6 +92,7 @@ QWidget *RegularBattleScene::createFullBarLayout(int nslots, int player)
 {
     QLabel* oppPoke = new QLabel();
     oppPoke->setPixmap(gui.theme->sprite("hpbar"));
+    /* Todo: Turn the Bar into a QPainter to allow scaling */
     oppPoke->setFixedSize(oppPoke->pixmap()->size());
 
     QVBoxLayout *oppl = new QVBoxLayout(oppPoke);
@@ -121,40 +122,24 @@ void RegularBattleScene::setupGui()
     gui.bars.resize(nslots);
     gui.status.resize(nslots);
 
-    QVBoxLayout *l=  new QVBoxLayout(this);
-    l->setMargin(0);
+    QGridLayout *window = new QGridLayout(this);
+    window->setSizeConstraint(QLayout::SetFixedSize);
 
-    /* As anyway the GraphicsZone is a fixed size, it's useless to
-       resize that part, might as well let  the chat be resized */
-    l->setSizeConstraint(QLayout::SetFixedSize);
-
-    QHBoxLayout *firstLine = new QHBoxLayout();
-    l->addLayout(firstLine);
-
-    QHBoxLayout *midzone = new QHBoxLayout();
-    l->addLayout(midzone);
-
-    QHBoxLayout *lastLine = new QHBoxLayout();
-    l->addLayout(lastLine);
-
-    QVBoxLayout *teamAndName[2];
+    QVBoxLayout *team[2];
+    QVBoxLayout *name[2];
 
     for (int i = 0; i < 2; i++) {
-        teamAndName[i] = new QVBoxLayout();
-        teamAndName[i]->addLayout(createTeamLayout(gui.pokeballs[i]));
-        teamAndName[i]->addWidget(gui.trainers[i] = new QLabel(data()->name(i)),0, Qt::AlignRight);
+        team[i] = new QVBoxLayout();
+        team[i]->addLayout(createTeamLayout(gui.pokeballs[i]));
+        name[i] = new QVBoxLayout();
+        name[i]->addWidget(gui.trainers[i] = new QLabel(data()->name(i)),0, Qt::AlignRight);
         gui.trainers[i]->setObjectName("TrainerNick");
     }
 
-    firstLine->addWidget(gui.fullBars[opponent()] = createFullBarLayout(nslots, opponent()));
-    firstLine->addLayout(teamAndName[opponent()]);
-
     gui.zone = new GraphicsZone(data(), gui.theme);
 
-    /* Make the code below more generic? */
+    /* Set up our data */
     QVBoxLayout *midme = new QVBoxLayout();
-    midzone->addLayout(midme);
-    midme->addStretch(100);
     gui.timers[myself()] = new QProgressBar();
     gui.timers[myself()]->setObjectName("TimeOut"); //for style sheets
     gui.timers[myself()]->setRange(0,300);
@@ -163,13 +148,12 @@ void RegularBattleScene::setupGui()
     mybox->setFixedSize(82,82);
     mybox->setPixmap(gui.theme->trainerSprite(data()->avatar(myself())));
     midme->addWidget(gui.timers[myself()]);
+    midme->addLayout(team[myself()]);
     midme->addWidget(mybox);
+    midme->addLayout(name[myself()]);
 
-    midzone->addWidget(gui.zone);
-
+    /* Set up Opponent's data */
     QVBoxLayout *midopp = new QVBoxLayout();
-    midzone->addLayout(midopp);
-    midopp->addStretch(100);
     gui.timers[opponent()] = new QProgressBar();
     gui.timers[opponent()]->setObjectName("TimeOut"); //for style sheets
     gui.timers[opponent()]->setRange(0,300);
@@ -177,11 +161,22 @@ void RegularBattleScene::setupGui()
     oppbox->setPixmap(gui.theme->trainerSprite(data()->avatar(opponent())));
     oppbox->setObjectName("OppTrainerBox");
     oppbox->setFixedSize(82,82);
+    midopp->addLayout(name[opponent()]);
     midopp->addWidget(oppbox);
+    midopp->addLayout(team[opponent()]);
     midopp->addWidget(gui.timers[opponent()]);
 
-    lastLine->addLayout(teamAndName[myself()]);
-    lastLine->addWidget(gui.fullBars[myself()] = createFullBarLayout(nslots, myself()));
+    /* Field must be at least 215 pixels tall otherwise the side elements will collide, causing display issues */
+    gui.zone->setMinimumSize(400,240);
+    gui.zone->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    gui.zone->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    /* Arrange everything */
+    window->addLayout(midopp,0,4,3,1,Qt::AlignTop);
+    window->addWidget(gui.fullBars[opponent()] = createFullBarLayout(nslots, opponent()),0,1,1,3,Qt::AlignRight);
+    window->addWidget(gui.zone,1,1,2,3);
+    window->addWidget(gui.fullBars[myself()] = createFullBarLayout(nslots, myself()),3,1,1,3,Qt::AlignLeft);
+    window->addLayout(midme,1,0,3,1,Qt::AlignBottom);
 
     QTimer *t = new QTimer (this);
     t->start(200);
@@ -300,6 +295,11 @@ void RegularBattleScene::unpause()
 
 void RegularBattleScene::onUseAttack(int spot, int attack, bool, bool) {
     emit attackUsed(spot, attack);
+}
+
+void RegularBattleScene::onUsePP(int spot, int attack, int ppsum)
+{
+    emit ppUsed(spot, attack, ppsum);
 }
 
 void RegularBattleScene::onPokeballStatusChanged(int player, int poke, int)
@@ -500,8 +500,15 @@ GraphicsZone::GraphicsZone(battledata_ptr i, BattleDefaultTheme *theme) : mInfo(
     tooltips.resize(nslots);
     items.resize(nslots);
 
-    scene.setSceneRect(0,0,321,181);
-    scene.addItem(new QGraphicsPixmapItem(theme->pic(QString("battle_fields/%1.png").arg((rand()%11)+1))));
+    scene.setSceneRect(0,0,400,240);
+    QDir directory((theme->directoryPath("battle_fields")));
+    directory.setNameFilters(QStringList() << "*.png");
+    QStringList files = directory.entryList();
+    QString fileName = "";
+    if (!files.isEmpty()) {
+        fileName = files[(rand()%files.length())];
+    }
+    scene.addItem(new QGraphicsPixmapItem(theme->pic(QString("battle_fields/%1").arg(fileName))));
 
     for (int i = 0; i < nslots; i++) {
         items[i] = new QGraphicsPixmapItem();
@@ -511,13 +518,13 @@ GraphicsZone::GraphicsZone(battledata_ptr i, BattleDefaultTheme *theme) : mInfo(
     int size = Version::avatarSize[info()->gen().num-1];
 
     if (!info()->multiples()) {
-        items[info()->spot(myself())]->setPos(50 - size/2, 146 - size);
-        items[info()->spot(opponent())]->setPos(184- size/2, 96 - size);
+        items[info()->spot(myself())]->setPos(60 - size/2, 175 - size);
+        items[info()->spot(opponent())]->setPos(310 - size/2, 60 - size);
     } else {
         for (int i = 0; i < nslots/2; i++) {
-            items[info()->spot(myself(), i)]->setPos(i*60, 146-size);
-            int base = 257-80-(nslots/2 - 1)*60;
-            items[info()->spot(opponent(), i)]->setPos(base+i*60, 96 - size);
+            items[info()->spot(myself(), i)]->setPos(i*65, 200-size);
+            int base = 240-(nslots/2 - 1)*60;
+            items[info()->spot(opponent(), i)]->setPos(base+i*65, 165 - size);
         }
     }
 }
@@ -536,17 +543,17 @@ void GraphicsZone::updatePos(int spot)
 
     if (player == myself()) {
         if (!info()->multiples()) {
-            items[spot]->setPos(75 - width/2, 182 - height);
+            items[spot]->setPos(95 - width/2, 225 - height);
         } else {
-            items[spot]->setPos(info()->slotNum(spot)*75, 182-height);
+            items[spot]->setPos(info()->slotNum(spot)*75, 240-height);
         }
     } else {
         if (!info()->multiples()) {
-            items[spot]->setPos(235 - width/2, 115 - height);
+            items[spot]->setPos(295 - width/2, 140 - height);
         } else {
             //Triples has really erratic placing at some points still in 6G.
-            int base = 321-90-(info()->numberOfSlots()/2 - 1)*60;
-            items[spot]->setPos(base + info()->slotNum(spot)*60, 120-height);
+            int base = 300-(info()->numberOfSlots()/2 - 1)*65;
+            items[spot]->setPos(base + info()->slotNum(spot)*65, 135-height);
         }
     }
 }
@@ -750,7 +757,7 @@ void RegularBattleScene::updateToolTip(int spot)
     }
 
     if (data()->field().weather() != Weather::NormalWeather) {
-        tooltip += "\n" + tr("Weather: %1").arg(TypeInfo::weatherName(data()->field().weather()));
+        tooltip += "\n" + tr("Weather: %1").arg(tu(TypeInfo::weatherName(data()->field().weather())));
     }
 
     if (!data()->isPlayer(spot) && data()->poke(spot).move(0)->num() != Move::NoMove) {

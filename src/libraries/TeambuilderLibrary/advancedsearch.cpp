@@ -50,6 +50,7 @@ void AdvancedSearch::setGen(const Pokemon::gen &gen)
         abilities.push_back(AbilityInfo::Name(i));
     }
     qSort(abilities);
+    abilities.removeAll("");
 
     ui->ability->setModel(new QStringListModel(abilities, this));
 
@@ -59,6 +60,7 @@ void AdvancedSearch::setGen(const Pokemon::gen &gen)
         moves.push_back(MoveInfo::Name(i));
     }
     qSort(moves);
+    moves.removeAll("");
 
     QStringListModel *mmodel = new QStringListModel(moves, this);
     QLineEdit *movesw[4] = {ui->move1, ui->move2, ui->move3, ui->move4 };
@@ -99,6 +101,9 @@ void AdvancedSearch::search() {
         types.push_back(ui->type2->currentIndex());
     }
     ability = AbilityInfo::Number(ui->ability->currentText());
+    if (!AbilityInfo::Exists(ability, gen) || ui->ability->currentText().length() == 0) {
+        ability = Ability::NoAbility;
+    }
 
     QLineEdit *move[] = {ui->move1, ui->move2, ui->move3, ui->move4};
     for(int i = 0; i < 4; i++) {
@@ -109,11 +114,11 @@ void AdvancedSearch::search() {
     QLineEdit *stats[] = {ui->hpedit, ui->atkedit, ui->defedit, ui->spatkedit, ui->spdefedit, ui->speededit};
     QComboBox *statSymbols[] = {ui->hpbox, ui->atkbox, ui->defbox, ui->spatkbox, ui->spdefbox, ui->speedbox};
     for (int i = 0; i < 6; i++) {
-        if (statSymbols[i]->currentIndex() == 1) {
+        if (statSymbols[i]->currentIndex() == 0) {
             minStats.push_back(QPair<int, int> (i,stats[i]->text().toInt()));
-        } else if (statSymbols[i]->currentIndex() == 2) {
+        } else if (statSymbols[i]->currentIndex() == 1) {
             equalStats.push_back(QPair<int, int> (i,stats[i]->text().toInt()));
-        } else if (statSymbols[i]->currentIndex() == 3) {
+        } else if (statSymbols[i]->currentIndex() == 2) {
             maxStats.push_back(QPair<int, int> (i,stats[i]->text().toInt()));
         }
     }

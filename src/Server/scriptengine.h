@@ -122,8 +122,8 @@ public:
     bool beforeChallengeIssued(int src, int dest, const ChallengeInfo &desc);
     void afterChallengeIssued(int src, int dest, const ChallengeInfo &desc);
 
-    bool beforeBattleMatchup(int src, int dest, const ChallengeInfo &desc);
-    void afterBattleMatchup(int src, int dest, const ChallengeInfo &desc);
+    bool beforeBattleMatchup(int src, int dest, const ChallengeInfo &desc, int team1, int team2);
+    void afterBattleMatchup(int src, int dest, const ChallengeInfo &desc, int team1, int team2);
 
     void beforeBattleStarted(int src, int dest, const ChallengeInfo &desc, int battleid, TeamBattle &team1, TeamBattle &team2);
     void afterBattleStarted(int winner, int loser, const ChallengeInfo &desc, int battleid, int team1, int team2);
@@ -308,6 +308,11 @@ public:
     /* Removes the history of kicks and logins for all the IPs */
     Q_INVOKABLE void clearDosData();
     Q_INVOKABLE void reloadDosSettings();
+    /* In case the antidos bugs and the number of ips for one ip in particular doesn't decrease even after disconnection, do
+     * something dirty and manually change the connection data.
+     *
+     * Should only be used on 127.0.0.1 in case of webclient */
+    Q_INVOKABLE void clearDosIP(const QString &ip);
     Q_INVOKABLE QScriptValue currentMod();
     Q_INVOKABLE QScriptValue currentModPath();
     Q_INVOKABLE QScriptValue dataRepo();
@@ -352,6 +357,7 @@ public:
     Q_INVOKABLE QScriptValue teamPokePP(int id, int team, int slot, int moveslot);
     Q_INVOKABLE QScriptValue teamPoke(int id, quint32 teamLo, int index, quint32 teamHi = 0);
     Q_INVOKABLE QScriptValue teamPokeName(int id, int team, int pokemonnum);
+    Q_INVOKABLE bool teamPokeIllegal(int id, int team, int slot);
     Q_INVOKABLE bool hasTeamPoke(int id, int team, int pokemonnum);
     Q_INVOKABLE QScriptValue indexOfTeamPoke(int id, int team, int pokenum);
     Q_INVOKABLE bool hasDreamWorldAbility(int id, int team, int slot, int gen = 5);
@@ -511,6 +517,17 @@ public:
     Q_INVOKABLE QScriptValue list_processes();
     Q_INVOKABLE QScriptValue kill_processes();
     Q_INVOKABLE QScriptValue write_process(double pid, const QString &data);
+
+    Q_INVOKABLE void killBattleServer();
+
+    Q_INVOKABLE bool isPokeBannedFromTier(int pokeid, const QString &tier);
+    Q_INVOKABLE bool isAbilityBannedFromTier(int abid, const QString &tier);
+    Q_INVOKABLE bool isItemBannedFromTier(int itemid, const QString &tier);
+    Q_INVOKABLE bool isMoveBannedFromTier(int moveid, const QString &tier);
+    Q_INVOKABLE bool isAesthetic(int pokeid);
+    Q_INVOKABLE int stoneForForme(int pokeid);
+    Q_INVOKABLE int generationOfTier(const QString &tier);
+    Q_INVOKABLE int subGenerationOfTier(const QString &tier);
     inline quint64 getProcessID(const QProcess* proc)
     {
         #ifdef Q_OS_WIN

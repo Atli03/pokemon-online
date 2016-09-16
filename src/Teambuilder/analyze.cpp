@@ -66,15 +66,18 @@ void Analyzer::login(const TeamHolder &team, bool ladder, bool away, const QColo
     //    HasPluginList,
     //    HasCookie,
     //    HasUniqueId
-
     Flags data;
     data.setFlag(PlayerFlags::SupportsZipCompression, true);
     data.setFlag(PlayerFlags::LadderEnabled, ladder);
     data.setFlag(PlayerFlags::Idle, away);
+    data.setFlag(PlayerFlags::HasRegisterCheck, true);
+    data.setFlag(PlayerFlags::WantsHTML, true);
     //                  SupportsZipCompression,
     //                  LadderEnabled,
     //                  IdsWithMessage,
-    //                  Idle
+    //                  Idle,
+    //                  HasRegisterCheck,
+    //                  WantsHTML
 
     out << uchar(Login) << ownVersion << network;
 
@@ -390,6 +393,11 @@ void Analyzer::commandReceived(const QByteArray &commandline)
             in >> reconnectPass;
             emit reconnectPassGiven(reconnectPass);
         }
+        int minHtml = -1;
+        if (network[1]) {
+            in >> minHtml;
+        }
+        emit minHTMLGiven(minHtml);
         PlayerInfo p;
         in >> p;
         QStringList tiers;
@@ -459,11 +467,16 @@ void Analyzer::commandReceived(const QByteArray &commandline)
     }
     case AskForPass: {
         QByteArray salt;
+        bool registerRequest;
         in >> salt;
-
+        if(!in.atEnd()) {
+            in >> registerRequest;
+        } else {
+            registerRequest = false;
+        }
         if (salt.length() < 6 || strlen((" " + salt).data()) < 7)
             emit protocolError(5080, tr("The server requires insecure authentication."));
-        emit passRequired(salt);
+        emit passRequired(salt,registerRequest);
         break;
     }
     case Register: {
@@ -714,6 +727,12 @@ void Analyzer::commandReceived(const QByteArray &commandline)
             in >> reason;
             emit reconnectFailure(reason);
         }
+        break;
+    }
+    case HtmlAuthChange: {
+        int auth;
+        in >> auth;
+        emit minHTMLGiven(auth);
         break;
     }
     default: {

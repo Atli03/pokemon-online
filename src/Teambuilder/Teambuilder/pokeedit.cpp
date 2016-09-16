@@ -20,7 +20,7 @@
 #include "teambuilder.h"
 
 bool PokeEdit::advancedWindowClosed = false;
-
+bool PokeEdit::hackMons = false;
 PokeEdit::PokeEdit(TeamBuilderWidget *master, PokeTeam *poke, QAbstractItemModel *pokeModel, QAbstractItemModel *itemsModel, QAbstractItemModel *natureModel) :
     ui(new Ui::PokeEdit),
     pokemonModel(pokeModel),
@@ -73,57 +73,7 @@ PokeEdit::PokeEdit(TeamBuilderWidget *master, PokeTeam *poke, QAbstractItemModel
     /* 20 characters for the name. Longest name: Vivillon-Archipelago = 20 characters */
     ui->nickname->setValidator(new QNickValidator(ui->nickname, 20));
 
-    movesModel = new PokeMovesModel(poke->num(), poke->gen(), this);
-    QSortFilterProxyModel *filter = new QSortFilterProxyModel(this);
-    filter->setSourceModel(movesModel);
-    ui->moveChoice->setModel(filter);
-
-#ifdef QT5
-    ui->moveChoice->horizontalHeader()->setSectionResizeMode(PokeMovesModel::PP, QHeaderView::ResizeToContents);
-    ui->moveChoice->horizontalHeader()->setSectionResizeMode(PokeMovesModel::Priority, QHeaderView::ResizeToContents);
-    ui->moveChoice->horizontalHeader()->setSectionResizeMode(PokeMovesModel::Pow, QHeaderView::ResizeToContents);
-    ui->moveChoice->horizontalHeader()->setSectionResizeMode(PokeMovesModel::Acc, QHeaderView::ResizeToContents);
-    ui->moveChoice->horizontalHeader()->setSectionResizeMode(PokeMovesModel::Name, QHeaderView::Fixed);
-#else
-    ui->moveChoice->horizontalHeader()->setResizeMode(PokeMovesModel::PP, QHeaderView::ResizeToContents);
-    ui->moveChoice->horizontalHeader()->setResizeMode(PokeMovesModel::Pow, QHeaderView::ResizeToContents);
-    ui->moveChoice->horizontalHeader()->setResizeMode(PokeMovesModel::Acc, QHeaderView::ResizeToContents);
-    ui->moveChoice->horizontalHeader()->setResizeMode(PokeMovesModel::Name, QHeaderView::Fixed);
-#endif
-    ui->moveChoice->horizontalHeader()->resizeSection(PokeMovesModel::Name, 125);
-    ui->moveChoice->horizontalHeader()->resizeSection(PokeMovesModel::Type, Theme::TypePicture(Type::Normal).width()+5);
-    ui->moveChoice->setIconSize(Theme::TypePicture(Type::Normal).size());
-
-    ui->moveChoice->sortByColumn(PokeMovesModel::Name, Qt::AscendingOrder);
-
-    m_moves[0] = ui->move1;
-    m_moves[1] = ui->move2;
-    m_moves[2] = ui->move3;
-    m_moves[3] = ui->move4;
-
-    connect(ui->speciesLabel, SIGNAL(clicked()), SLOT(on_pokemonFrame_clicked()));
-
-    connect(ui->moveChoice, SIGNAL(activated(QModelIndex)), SLOT(moveEntered(QModelIndex)));
-
-    /* the four move choice items */
-    for (int i = 0; i < 4; i++)
-    {
-        QCompleter *completer = new QCompleter(m_moves[i]);
-        completer->setModel(ui->moveChoice->model());
-        completer->setCompletionColumn(PokeMovesModel::Name);
-        completer->setCaseSensitivity(Qt::CaseInsensitive);
-        completer->setCompletionMode(QCompleter::PopupCompletion);
-        completer->setCompletionRole(Qt::DisplayRole);
-        m_moves[i]->setCompleter(completer);
-
-        completer->setProperty("move", i);
-        m_moves[i]->setProperty("move", i);
-
-        connect(completer, SIGNAL(activated(QString)), SLOT(changeMove()));
-        connect(m_moves[i], SIGNAL(returnPressed()), SLOT(changeMove()));
-        connect(m_moves[i], SIGNAL(editingFinished()), SLOT(changeMove()));
-    }
-
+    fillMoves();
     connect(ui->levelSettings, SIGNAL(levelUpdated()), this, SLOT(updateStats()));
     connect(ui->levelSettings, SIGNAL(levelUpdated()), ui->ivbox, SLOT(updateStats()));
     connect(ui->levelSettings, SIGNAL(genderUpdated()), this, SLOT(updatePicture()));
@@ -141,6 +91,56 @@ PokeEdit::PokeEdit(TeamBuilderWidget *master, PokeTeam *poke, QAbstractItemModel
     updateAll();
 }
 
+void PokeEdit::fillMoves()
+{
+    movesModel = new PokeMovesModel(m_poke->num(), m_poke->gen(), this, hackMons);
+    QSortFilterProxyModel *filter = new QSortFilterProxyModel(this);
+    filter->setSourceModel(movesModel);
+    ui->moveChoice->setModel(filter);
+    ui->moveChoice->disconnect(SIGNAL(activated(QModelIndex)), this);
+    connect(ui->moveChoice, SIGNAL(activated(QModelIndex)), SLOT(moveEntered(QModelIndex)));
+#ifdef QT5
+    ui->moveChoice->horizontalHeader()->setSectionResizeMode(PokeMovesModel::PP, QHeaderView::ResizeToContents);
+    ui->moveChoice->horizontalHeader()->setSectionResizeMode(PokeMovesModel::Priority, QHeaderView::ResizeToContents);
+    ui->moveChoice->horizontalHeader()->setSectionResizeMode(PokeMovesModel::Pow, QHeaderView::ResizeToContents);
+    ui->moveChoice->horizontalHeader()->setSectionResizeMode(PokeMovesModel::Acc, QHeaderView::ResizeToContents);
+    ui->moveChoice->horizontalHeader()->setSectionResizeMode(PokeMovesModel::Name, QHeaderView::Fixed);
+#else
+    ui->moveChoice->horizontalHeader()->setResizeMode(PokeMovesModel::PP, QHeaderView::ResizeToContents);
+    ui->moveChoice->horizontalHeader()->setResizeMode(PokeMovesModel::Pow, QHeaderView::ResizeToContents);
+    ui->moveChoice->horizontalHeader()->setResizeMode(PokeMovesModel::Acc, QHeaderView::ResizeToContents);
+    ui->moveChoice->horizontalHeader()->setResizeMode(PokeMovesModel::Name, QHeaderView::Fixed);
+#endif
+    ui->moveChoice->horizontalHeader()->resizeSection(PokeMovesModel::Name, 125);
+    ui->moveChoice->horizontalHeader()->resizeSection(PokeMovesModel::Type, Theme::TypePicture(Type::Normal).width()+5);
+    ui->moveChoice->setIconSize(Theme::TypePicture(Type::Normal).size());
+
+    ui->moveChoice->sortByColumn(PokeMovesModel::Name, Qt::AscendingOrder);
+    m_moves[0] = ui->move1;
+    m_moves[1] = ui->move2;
+    m_moves[2] = ui->move3;
+    m_moves[3] = ui->move4;
+    connect(ui->speciesLabel, SIGNAL(clicked()), SLOT(on_pokemonFrame_clicked()));
+
+    /* the four move choice items */
+    for (int i = 0; i < 4; i++)
+    {
+        QCompleter *completer = new QCompleter(m_moves[i]);
+        completer->setModel(ui->moveChoice->model());
+        completer->setCompletionColumn(PokeMovesModel::Name);
+        completer->setCaseSensitivity(Qt::CaseInsensitive);
+        completer->setCompletionMode(QCompleter::PopupCompletion);
+        completer->setCompletionRole(Qt::DisplayRole);
+        m_moves[i]->setCompleter(completer);
+
+        completer->setProperty("move", i);
+        m_moves[i]->setProperty("move", i);
+        connect(completer, SIGNAL(activated(QString)), SLOT(changeMove()));
+        connect(m_moves[i], SIGNAL(returnPressed()), SLOT(changeMove()));
+        connect(m_moves[i], SIGNAL(editingFinished()), SLOT(changeMove()));
+    }
+}
+
 void PokeEdit::closeAdvancedTab()
 {
     findChild<QWidget*>("AdvancedTab")->close();
@@ -149,6 +149,18 @@ void PokeEdit::closeAdvancedTab()
 void PokeEdit::showAdvancedTab()
 {
     findChild<QWidget*>("AdvancedTab")->show();
+}
+
+void PokeEdit::toggleHackmons()
+{
+    fillMoves();
+    ui->levelSettings->fillAbilities();
+    ui->levelSettings->updateAll();
+    ui->evbox->changeMaximumEv(hackMons);
+    if (!PokeEdit::hackMons) {
+        poke().runCheck();
+        ui->evbox->updateAll();
+    }
 }
 
 void PokeEdit::openPokemonSelection()
@@ -167,7 +179,7 @@ void PokeEdit::on_pokemonFrame_clicked()
 {
     PokeTableModel *model = (PokeTableModel*) pokemonModel;
     model->setGen(poke().gen());
-    PokeSelection *p = new PokeSelection(poke().num(), pokemonModel);
+    PokeSelection *p = new PokeSelection(poke().num(), pokemonModel, PokeEdit::hackMons);
     p->setParent(this, Qt::Popup);
     QPoint pos = ui->pokemonFrame->mapToGlobal(ui->pokemonFrame->pos());
     p->move(pos.x() + ui->pokemonFrame->width()+10, pos.y()-ui->pokemonFrame->height()/2);
@@ -213,7 +225,7 @@ void PokeEdit::changeMove()
 void PokeEdit::setMove(int slot, int move)
 {
     try {
-        poke().setMove(move, slot, true);
+        poke().setMove(move, slot, !hackMons);
         m_moves[slot]->setText(MoveInfo::Name(move));
 
         if (move == Move::Return) {
@@ -339,6 +351,8 @@ void PokeEdit::updateGender()
 void PokeEdit::updateItemSprite(int newItem)
 {
     ui->itemSprite->setPixmap(ItemInfo::Icon(newItem));
+    //Hack to make the tooltip wrap
+    ui->item->setToolTip(QString("<FONT>%1</FONT>").arg(ItemInfo::ItemDesc(newItem)));
 }
 
 void PokeEdit::setItem(int itemnum)
@@ -394,38 +408,46 @@ void PokeEdit::setNum(Pokemon::uniqueId num)
         poke().reset();
     }
 
-    if (num.pokenum == Pokemon::Keldeo) {
-        if (num == Pokemon::Keldeo_R && !poke().hasMove(Move::SecretSword)) {
-            try {
-                poke().addMove(Move::SecretSword);
-            } catch(const QString &) {
-                poke().setMove(Move::SecretSword, 0, false);
+    if (!PokeEdit::hackMons) {
+        if (num.pokenum == Pokemon::Keldeo) {
+            if (num == Pokemon::Keldeo_R && !poke().hasMove(Move::SecretSword)) {
+                try {
+                    poke().addMove(Move::SecretSword);
+                } catch(const QString &) {
+                    poke().setMove(Move::SecretSword, 0, false);
+                }
+            } else if (PokemonInfo::Released(Pokemon::Keldeo_R, poke().gen())) {
+                if (poke().gen() < 6)
+                    poke().removeMove(Move::SecretSword);
             }
-        } else if (PokemonInfo::Released(Pokemon::Keldeo_R, poke().gen())) {
-            if (poke().gen() < 6)
-                poke().removeMove(Move::SecretSword);
+        } else if (num.pokenum == Pokemon::Giratina) {
+            if (num == Pokemon::Giratina_O && poke().item() != Item::GriseousOrb) {
+                poke().item() = Item::GriseousOrb;
+            } else if (num == Pokemon::Giratina && poke().item() == Item::GriseousOrb) {
+                poke().item() = Item::NoItem;
+            }
+        } else if (num.pokenum == Pokemon::Arceus && ItemInfo::PlateType(poke().item()) != num.subnum) {
+            poke().item() = ItemInfo::PlateForType(num.subnum);
+        } else if (num.pokenum == Pokemon::Genesect && ItemInfo::DriveForme(poke().item()) != num.subnum) {
+            poke().item() = ItemInfo::DriveForForme(num.subnum);
+        } else if (PokemonInfo::IsMegaEvo(num)) {
+            poke().item() = ItemInfo::StoneForForme(num);
+            /*Override using the mega until there's a better solution.*/
+            num = Pokemon::uniqueId(num.pokenum, 0);
         }
-    } else if (num.pokenum == Pokemon::Giratina) {
-        if (num == Pokemon::Giratina_O && poke().item() != Item::GriseousOrb) {
-            poke().item() = Item::GriseousOrb;
-        } else if (num == Pokemon::Giratina && poke().item() == Item::GriseousOrb) {
-            poke().item() = Item::NoItem;
-        }
-    } else if (num.pokenum == Pokemon::Arceus && ItemInfo::PlateType(poke().item()) != num.subnum) {
-        poke().item() = ItemInfo::PlateForType(num.subnum);
-    } else if (num.pokenum == Pokemon::Genesect && ItemInfo::DriveForme(poke().item()) != num.subnum) {
-        poke().item() = ItemInfo::DriveForForme(num.subnum);
     }
 
     poke().setNum(num);
     poke().load();
 
-    //if (!sameForme) {
+    if (PokemonInfo::IsMegaEvo(num) && !PokeEdit::hackMons) {
+        poke().nickname() = PokemonInfo::Name(Pokemon::uniqueId(num.pokenum, 0));
+    } else {
         poke().nickname() = PokemonInfo::Name(num);
-    //}
+    }
 
     if (sameForme) {
-        poke().runCheck();
+        poke().runCheck(PokeEdit::hackMons);
     }
 
     emit numChanged();
@@ -447,20 +469,27 @@ void PokeEdit::changeItem(const QString &itemName)
 {
     int itemNum = ItemInfo::Number(itemName);
     poke().item() = itemNum;
-    if (poke().num() == Pokemon::Giratina && itemNum == Item::GriseousOrb && PokemonInfo::Released(Pokemon::Giratina_O, poke().gen())) {
-        setNum(Pokemon::Giratina_O); 
-    } else if (poke().num() == Pokemon::Giratina_O && itemNum != Item::GriseousOrb) {
-        setNum(Pokemon::Giratina); 
-    } else if (itemNum == Item::GriseousOrb && poke().gen() <= 4 && poke().num().pokenum != Pokemon::Giratina) {
-        poke().item() = 0;
-    }
-    if (poke().num().pokenum == Pokemon::Arceus) {
-        int subnum = ItemInfo::isPlate(itemNum) ? ItemInfo::PlateType(itemNum) : 0;
-        setNum(Pokemon::uniqueId(poke().num().pokenum, subnum));
-    }
-    if (poke().num().pokenum == Pokemon::Genesect) {
-        int subnum = ItemInfo::isDrive(itemNum) ? ItemInfo::DriveForme(itemNum) : 0;
-        setNum(Pokemon::uniqueId(poke().num().pokenum, subnum));
+    if (!PokeEdit::hackMons) {
+        if (poke().num() == Pokemon::Giratina && itemNum == Item::GriseousOrb && PokemonInfo::Released(Pokemon::Giratina_O, poke().gen())) {
+            setNum(Pokemon::Giratina_O);
+        } else if (poke().num() == Pokemon::Giratina_O && itemNum != Item::GriseousOrb) {
+            setNum(Pokemon::Giratina);
+        } else if (itemNum == Item::GriseousOrb && poke().gen() <= 4 && poke().num().pokenum != Pokemon::Giratina) {
+            poke().item() = 0;
+        }
+        if (poke().num().pokenum == Pokemon::Arceus) {
+            int subnum = ItemInfo::isPlate(itemNum) ? ItemInfo::PlateType(itemNum) : 0;
+            setNum(Pokemon::uniqueId(poke().num().pokenum, subnum));
+        }
+        if (poke().num().pokenum == Pokemon::Genesect) {
+            int subnum = ItemInfo::isDrive(itemNum) ? ItemInfo::DriveForme(itemNum) : 0;
+            setNum(Pokemon::uniqueId(poke().num().pokenum, subnum));
+        }
+        if (itemNum != ItemInfo::StoneForForme(poke().num())) {
+            if (PokemonInfo::IsMegaEvo(poke().num()) && !PokeEdit::hackMons) {
+                setNum(Pokemon::uniqueId(poke().num().pokenum,0));
+            }
+        }
     }
     updateItemSprite(poke().item());
     emit itemChanged();

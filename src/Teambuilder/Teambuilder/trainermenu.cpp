@@ -12,6 +12,7 @@
 #include "ui_trainermenu.h"
 #include "Teambuilder/teamimporter.h"
 #include "Teambuilder/avatardialog.h"
+#include "./damagecalc.h"
 
 TrainerMenu::TrainerMenu(TeamHolder *team) :
     ui(new Ui::TrainerMenu), m_team(team)
@@ -44,6 +45,7 @@ TrainerMenu::TrainerMenu(TeamHolder *team) :
     connect(ui->pokemonButtons, SIGNAL(clicked(int)), SIGNAL(editPoke(int))); //I prefer double click, but for newbies...
     connect(ui->teambuilderLabel, SIGNAL(clicked()), SLOT(openTeam()));
     connect(ui->avatarSelect, SIGNAL(clicked()), SLOT(openAvatarDialog()));
+    connect(ui->damageCalc, SIGNAL(clicked()), SLOT(openDamageCalc()));
 
     loadProfileList();
     setupData();
@@ -77,6 +79,16 @@ void TrainerMenu::openAvatarDialog()
     a->show();
 }
 
+#define deb(msg) QMessageBox::information(0,"debug",msg)
+
+void TrainerMenu::openDamageCalc()
+{
+    DamageCalc *c = new DamageCalc(m_team->team().gen().num);
+
+    c->setAttribute(Qt::WA_DeleteOnClose, true);
+    c->show();
+}
+
 void TrainerMenu::on_teamName_textEdited()
 {
     team().team().setName(ui->teamName->text());
@@ -101,7 +113,7 @@ void TrainerMenu::on_importTeam_clicked()
 
 void TrainerMenu::importTeam(const QString &team)
 {
-    this->team().team().importFromTxt(team);
+    this->team().team().importFromTxt(team, this->team().team().hackMons() == "true");
 }
 
 void TrainerMenu::openImportAndroidDialog()
@@ -296,6 +308,14 @@ void TrainerMenu::on_winningMessage_textEdited()
 
 void TrainerMenu::on_infos_textChanged()
 {
+    ui->infoLength->setText(tr("%1/500").arg(ui->infos->toPlainText().length()));
+    if (ui->infos->toPlainText().length() > 500) {
+        QString newinfo = ui->infos->toPlainText();
+        newinfo.chop(ui->infos->toPlainText().length() - 500);
+        ui->infos->setPlainText(newinfo);
+        ui->infos->moveCursor(QTextCursor::End,QTextCursor::MoveAnchor);
+        ui->infoLength->setText(tr("%1/500 (Limit Reached)").arg(ui->infos->toPlainText().length()));
+    }
     team().info().info = ui->infos->toPlainText();
 }
 
@@ -377,7 +397,16 @@ void TrainerMenu::on_colorButton_clicked()
 {
     QColor c = QColorDialog::getColor(team().color());
 
-    if (!c.isValid() || (c.isValid() && (c.lightness() > 140 || c.green() > 180))) { // So they can click cancel without their colour disappearing!
+    if (c.green() + c.red() + c.blue() == 0) {
+        c.setBlue(1);
+    }
+
+    if (!c.isValid())
+        return;
+
+    int luma = (c.green()*3 + c.blue() +c.red()*2)/6;
+    if ((luma > 140 && c.lightness() > 140) || c.green() > 200) { // So they can click cancel without their colour disappearing!
+        QMessageBox::information(NULL, tr("Invalid Color"), tr("Your color must have less than 200 parts green, brightness less than 140, and lightness less than 140.\n\nYour selected color currently has %1 parts green, a brightness of %2, and a lightness of %3.").arg(c.green()).arg(luma).arg(c.lightness()));
         return;
     }
 

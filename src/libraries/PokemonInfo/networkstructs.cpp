@@ -104,6 +104,24 @@ DataStream &operator << (DataStream &out, const ProtocolVersion &p)
 TrainerInfo::TrainerInfo() : avatar(0) {
 }
 
+DataStream & operator << (DataStream &out, const TrainerInfo &i)
+{
+    VersionControl v(i.version);
+    Flags network;
+
+    bool messages = !i.winning.isEmpty() || !i.losing.isEmpty() || !i.tie.isEmpty();
+
+    network.setFlag(TrainerInfo::HasWinningMessages, messages);
+
+    v.stream << network << i.avatar << i.info;
+    if (messages) {
+        v.stream << i.winning << i.losing << i.tie;
+    }
+
+    out << v;
+    return out;
+}
+
 DataStream & operator >> (DataStream &in, TrainerInfo &i)
 {
     VersionControl v;
@@ -127,7 +145,12 @@ DataStream & operator >> (DataStream &in, TrainerInfo &i)
 
 void TrainerInfo::sanitize()
 {
-    if (info.length() > 300) {
+    //filter html before counting
+    QString infoStrip = info;
+    if (info.length() > 500) {
+        info.resize(500);
+    }
+    if (info.length() > 300 && infoStrip.remove(QRegExp("<([^>]+)>")).length() > 300) {
         info.resize(300);
     }
     if (winning.length() > 200) {
@@ -139,24 +162,6 @@ void TrainerInfo::sanitize()
     if (tie.length() > 200) {
         tie.resize(200);
     }
-}
-
-DataStream & operator << (DataStream &out, const TrainerInfo &i)
-{
-    VersionControl v(i.version);
-    Flags network;
-
-    bool messages = !i.winning.isEmpty() || !i.losing.isEmpty() || !i.tie.isEmpty();
-
-    network.setFlag(TrainerInfo::HasWinningMessages, messages);
-
-    v.stream << network << i.avatar << i.info;
-    if (messages) {
-        v.stream << i.winning << i.losing << i.tie;
-    }
-
-    out << v;
-    return out;
 }
 
 DataStream & operator >> (DataStream & in, PersonalTeam & team)
@@ -202,13 +207,40 @@ DataStream & operator >> (DataStream & in, PersonalTeam & team)
     return in;
 }
 
+DataStream & operator << (DataStream & out, const PersonalTeam & team)
+{
+    VersionControl v(0);
+
+    Flags network;
+    network.setFlag(0, team.defaultTier().length() > 0);
+    network.setFlag(1, false);
+
+    v.stream << network;
+
+    if (network[0]) {
+        v.stream << team.defaultTier();
+    }
+
+    v.stream << team.gen();
+
+    quint8 count = 6;
+
+    for(int i=0;i<count;i++)
+    {
+        v.stream << team.poke(i);
+    }
+
+    out << v;
+    return out;
+}
+
 LoginInfo::LoginInfo() : teams(0), channel(0), additionalChannels(0), trainerInfo(0), plugins(0), cookie(0), uniqueId(0)
 {
 }
 
 LoginInfo::~LoginInfo()
 {
-    delete teams, delete channel, delete additionalChannels, delete trainerInfo, delete plugins; delete cookie; delete uniqueId;
+    delete teams, delete channel, delete additionalChannels, delete trainerInfo, delete plugins, delete cookie, delete uniqueId;
 }
 
 DataStream & operator >> (DataStream &in, LoginInfo &l)
@@ -245,20 +277,17 @@ DataStream & operator >> (DataStream &in, LoginInfo &l)
         l.teams = new QList<PersonalTeam>();
         qint8 count;
         in >> count;
-        for (int i = 0; i < count; i++) {
+        for (int i = 0; i < std::min(count, qint8(6)); i++) {
             PersonalTeam t;
             in >> t;
-            /* 6 teams tops */
-            if (i < 6) {
-                l.teams->push_back(t);
-            }
+            l.teams->push_back(t);
         }
     }
 
     test(events, HasEventSpecification);
     load(plugins, HasPluginList);
-    load(cookie, HasCookie)
-    load(uniqueId, HasUniqueId)
+    load(cookie, HasCookie);
+    load(uniqueId, HasUniqueId);
 #undef load
 #undef test
 

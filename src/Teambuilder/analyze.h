@@ -99,7 +99,7 @@ signals:
     void spectatedBattle(int battleId, const BattleConfiguration &conf);
     void spectatingBattleMessage(int battleId, const QByteArray &mess);
     void spectatingBattleFinished(int battleId);
-    void passRequired(const QByteArray &salt);
+    void passRequired(const QByteArray &salt, bool registerRequest);
     void serverPassRequired(const QByteArray &salt);
     void notRegistered(bool);
     void playerKicked(int p, int src);
@@ -130,6 +130,8 @@ signals:
     void reconnectPassGiven(const QByteArray&);
     void reconnectSuccess();
     void reconnectFailure(int reason);
+    void minHTMLGiven(int auth);
+
 public slots:
     /* slots called by the network */
     void error();

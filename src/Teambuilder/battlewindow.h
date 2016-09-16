@@ -103,6 +103,7 @@ public:
     void onShiftSpots(int player, int spot1, int spot2, bool silent);
     void onBattleEnd(int res, int winner);
     void onPPChange(int spot, int move, int PP);
+    void onItemChange(int spot, int poke, int item);
     void onTempPPChange(int spot, int move, int PP);
     void onOfferChoice(int player, const BattleChoices &choice);
     void onMoveChange(int spot, int slot, int move, bool definite);
@@ -143,7 +144,7 @@ signals:
     void forfeit(int battleid);
     void offerTie(int battleid);
 protected:
-    void closeEvent(QCloseEvent *);
+    void closeEvent(QCloseEvent *event);
 protected slots:
     void changeAttackText(int i);
     void targetChosen(int i);

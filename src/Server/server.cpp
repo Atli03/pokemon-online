@@ -4,6 +4,7 @@
 #include <PokemonInfo/pokemoninfo.h>
 #include <PokemonInfo/networkstructs.h>
 #include <PokemonInfo/movesetchecker.h>
+#include <Utilities/exesuffix.h>
 #include <Utilities/otherwidgets.h>
 #include <Utilities/backtrace.h>
 #include "server.h"
@@ -92,8 +93,6 @@ void Server::start(){
 #endif
     srand(time(NULL));
 
-    registry = new RegistryCommunicator(this);
-
     if (!testWritable("config")) {
         //printLine(tr("Configuration file is not writable!! Make sure PO is installed in a non-protected folder!"), false, true);
 #ifdef Q_OS_WIN
@@ -117,6 +116,7 @@ void Server::start(){
     setDefaultValue("Server/Announcement", QString());
     setDefaultValue("Server/Description", QString());
     setDefaultValue("Server/MaxPlayers", 0);
+    setDefaultValue("Server/MinimumHTML", -1); // -1 is disabled
     setDefaultValue("Channels/LoggingEnabled", false);
     setDefaultValue("Channels/MainChannel", QString());
     setDefaultValue("Ladder/MonthsExpiration", 3);
@@ -142,6 +142,7 @@ void Server::start(){
     setDefaultValue("Players/ClearInactivesOnStartup", true);
     setDefaultValue("GUI/ShowLogMessages", false);
     setDefaultValue("Mods/CurrentMod", "");
+    setDefaultValue("Registry/IP", "registry.pokemon-online.eu");
 
     setDefaultValue("SQL/Driver", SQLCreator::SQLite);
     setDefaultValue("SQL/Database", "pokemon");
@@ -151,6 +152,8 @@ void Server::start(){
     setDefaultValue("SQL/Host", "localhost");
     setDefaultValue("SQL/DatabaseSchema", "");
     setDefaultValue("SQL/VacuumOnStartup", true);
+
+    registry = new RegistryCommunicator(s.value("Registry/IP").toString(), this);
 
     if (isSql()) {
         try {
@@ -248,6 +251,7 @@ void Server::start(){
     passwordProtected = s.value("Server/RequirePassword").toBool();
     serverPassword = s.value("Server/Password").toByteArray();
     zippedTiers = makeZipPacket(NetworkServ::TierSelection, TierMachine::obj()->tierList());
+    minimumHtml = s.value("Server/MinimumHTML").toInt();
 
     /* Adds the main channel */
     addChannel();
@@ -287,6 +291,13 @@ void Server::initBattles()
     connect(battles, SIGNAL(battleFinished(int,int,int,int)), SLOT(battleResult(int,int,int,int)));
     connect(battles, SIGNAL(battleInfo(int,int,QByteArray)), SLOT(sendBattleCommand(int,int,QByteArray)));
     connect(battles, SIGNAL(sendBattleInfos(int,int,int,TeamBattle,BattleConfiguration,QString)), SLOT(sendBattleInfos(int,int,int,TeamBattle,BattleConfiguration,QString)));
+}
+
+void Server::initRelayStation()
+{
+    auto relayStation = new QProcess(this);
+
+    relayStation->start("./RelayStation" SUFFIX);
 }
 
 void Server::print(const QString &line)
@@ -893,6 +904,11 @@ void Server::processLoginDetails(Player *p)
         } else {
             oppGroups[IdsWithMessage].insert(p);
         }
+        if (p->spec()[Player::WantsHTML]) {
+            groups[WantsHTML].insert(p);
+        } else {
+            oppGroups[WantsHTML].insert(p);
+        }
         if(!myengine->beforeLogIn(id, channel) && playerExist(id)) {
             mynames.remove(p->name().toLower());
             silentKick(id);
@@ -1249,6 +1265,11 @@ void Server::findBattle(int id, const FindBattleData &_f)
                 if ( (f.sameTier || data->sameTier) && t1.tier != t2.tier)
                     continue;
 
+                /* skip if one side doesn't allow illegal pokemon */
+                if (TierMachine::obj()->tier(t1.tier).allowIllegal != TierMachine::obj()->tier(t2.tier).allowIllegal) {
+                    continue;
+                }
+
                 /* We check both allow rated if needed */
                 if (f.rated || data->rated) {
                     if (!canHaveRatedBattle(id, key, t1, t2, f.rated, data->rated))
@@ -1276,11 +1297,11 @@ void Server::findBattle(int id, const FindBattleData &_f)
                     continue;
                 }
 
-                if (myengine->beforeBattleMatchup(id,key,c)) {
+                if (myengine->beforeBattleMatchup(id,key,c, f.shuffled[i], data->shuffled[j])) {
                     player(id)->lastFindBattleIp() = player(key)->ip();
                     player(key)->lastFindBattleIp() = player(id)->ip();
                     startBattle(id,key,c,f.shuffled[i], data->shuffled[j]);
-                    myengine->afterBattleMatchup(id,key,c);
+                    myengine->afterBattleMatchup(id,key,c, f.shuffled[i], data->shuffled[j]);
                     return;
                 }
             }
@@ -1512,9 +1533,10 @@ void Server::startBattle(int id1, int id2, const ChallengeInfo &c, int team1, in
 
     myengine->beforeBattleStarted(id1,id2,c,id,battleTeam1,battleTeam2);
 
-    QString tier = p1->team(team1).tier == p2->team(team2).tier ? p1->team(team1).tier : QString("Mixed %1").arg(GenInfo::Version(p1->team(team1).gen));
+    QString fulltier = QString("Mixed %1").arg(GenInfo::Version(p1->team(team1).gen));
+    QString tier = p1->team(team1).tier == p2->team(team2).tier ? p1->team(team1).tier : fulltier;
 
-    printLine(QString("%1 battle between %2 and %3 started").arg(tier).arg(name(id1)).arg(name(id2)));
+    printLine(QString("%1 battle between %2 and %3 started").arg(tier.length() > 0 ? tier : fulltier).arg(name(id1)).arg(name(id2)));
 
     battleList.insert(id, Battle(id1, id2, c.mode, tier));
     //myengine->battleSetup(id1, id2, id); // dispatch script event
@@ -2044,6 +2066,16 @@ void Server::notifyGroup(PlayerGroupFlags group, const QByteArray &packet)
     foreach(Player *p, g) {
         p->sendPacket(packet);
     }
+}
+
+void Server::scriptKillBattleServer()
+{
+    battles->killServer();
+}
+
+void Server::minHtmlChanged(int auth) {
+    minimumHtml = auth;
+    notifyGroup(WantsHTML, NetworkServ::HtmlAuthChange, minimumHtml);
 }
 
 #include "server.tpp"

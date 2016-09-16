@@ -71,6 +71,7 @@ public:
     static int TrueCount(); // pokes without counting forms
     static int NumberOfPokemons(); // base + all forms.
     static QString Name(const Pokemon::uniqueId &pokeid);
+    static QStringList Names(Pokemon::gen gen, bool returnFormes = true);
     static Pokemon::uniqueId Number(const QString &pokename);
     static int LevelBalance(const Pokemon::uniqueId &pokeid, Pokemon::gen gen);
     static QString WeightS(const Pokemon::uniqueId &pokeid);
@@ -109,6 +110,7 @@ public:
     static Pokemon::uniqueId NonAestheticForme(Pokemon::uniqueId id);
     static Pokemon::uniqueId OriginalForme(const Pokemon::uniqueId &pokeid);
     static bool HasFormes(const Pokemon::uniqueId &pokeid);
+    static bool HasMegaEvo(const Pokemon::uniqueId &pokeid);
     // Will NOT return base form.
     static QList<Pokemon::uniqueId> Formes(const Pokemon::uniqueId &pokeid, Pokemon::gen gen);
     static QList<Pokemon::uniqueId> VisibleFormes(const Pokemon::uniqueId &pokeid, Pokemon::gen gen);
@@ -235,6 +237,7 @@ public:
     /* Self-explainable functions */
     static QString Name(int movenum);
     static QStringList Names();
+    static QStringList Names(Pokemon::gen gen);
     static int Type(int movenum, Pokemon::gen gen);
     static int Category(int movenum, Pokemon::gen gen);
     static int Classification(int movenum, Pokemon::gen gen);
@@ -369,6 +372,7 @@ public:
     static int DriveType(int itemnum);
     static int DriveForme(int itemnum);
     static int DriveForForme(int forme);
+    static int StoneForForme(const Pokemon::uniqueId &id);
     static bool IsBattleItem(int itemnum, Pokemon::gen gen);
     static int Target(int itemnum, Pokemon::gen gen);
     static QList<QString> SortedNames(Pokemon::gen gen);
@@ -401,11 +405,14 @@ private:
     static QHash<int, bool> m_UsefulItems, m_UsefulBerries;
     static QVector<QSet<int> > m_GenItems;
     static QHash<int,QString> m_ItemDesc;
+    static QHash<int,QString> m_BerryDesc;
+    static QHash<Pokemon::uniqueId,int> m_StoneFormes;
 
     static void loadNames();
     static void loadEffects();
     static void loadFlingData();
     static void loadGenData();
+    static void loadStoneFormes();
     static void loadMessages();
     static void loadDescriptions();
     static QString path(const QString &filename);
@@ -420,6 +427,7 @@ public:
 
     /* Self-explainable functions */
     static QString Name(int typenum);
+    static QStringList Names(Pokemon::gen gen);
     static int Number(const QString &type);
     static int Eff(int type_attack, int type_defend, Pokemon::gen gen = GenInfo::GenMax()); /* Returns how effective it is: 4 = super, 2 = normal, 1 = not much, 0 = ineffective */
     static int NumberOfTypes();
@@ -459,6 +467,7 @@ public:
 
     /* Self-explainable functions */
     static QString Name(int naturenum);
+    static QStringList Names(Pokemon::gen gen);
     static int NumberOfNatures();
     static int Number(const QString &pokename);
     /* Finds nature of two stats, first parameter is the stat raised, second it the stat lowered*/
@@ -485,6 +494,7 @@ public:
 
     /* Self-explainable functions */
     static QString Name(int catnum);
+    static QStringList Names();
     static int NumberOfCategories();
 private:
     static QHash<int, QString> m_Names;
@@ -509,6 +519,7 @@ public:
 
     /* Self-explainable functions */
     static QString Name(int abnum);
+    static QStringList Names(Pokemon::gen gen);
     static Effect Effects(int abnum, Pokemon::gen gen);
     static int Number(const QString &ab);
     static QString Message(int ab, int part);
@@ -544,6 +555,7 @@ public:
     /* Self-explainable functions */
     static QString Name(int gender);
     static int NumberOfGenders();
+    static int Number(const QString &name);
     static int Default(int genderAvail);
     static bool Possible(int gender, int genderAvail);
 private:
@@ -585,6 +597,9 @@ public:
     static QString Stat(int stat, const Pokemon::gen &gen);
     static QString Status(int status);
     static QString ShortStatus(int status);
+    static QStringList StatusNames();
+    static int StatusNumber(const QString &name);
+    static int NumberOfStatuses();
 private:
     static QString m_Directory;
     static QHash<int, QString> m_stats;

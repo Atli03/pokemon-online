@@ -90,6 +90,7 @@ protected:
     /* Todo: expand following macros */
     start(SendBack, int spot; bool silent) end(spot, silent)
     start(UseAttack, int spot; int attack; bool silent; bool special=false) end(spot, attack, silent, special)
+    start(UsePP, int spot; int attack; int ppsum) end(spot, attack, ppsum)
     start(Turn, int turn) end(turn)
     start(NewHp, int spot; int newHp) end(spot, newHp)
     start(Hits, int spot; int count) end(spot, count)
@@ -106,7 +107,7 @@ protected:
     start(StatusHurt, int spot; int status) end(spot, status)
     start(StatusFree, int spot; int status) end(spot, status)
     start(Fail, int spot; bool silent) end(spot, silent)
-    start(PlayerMessage, int spot; string_ptr message) end(spot, message)
+    start(PlayerMessage, int spot; string_ptr message; bool endMessage) end(spot, message, endMessage)
     start(SpectatorLeave, int id) end(id)
     start(SpectatorMessage, int id; string_ptr message) end(id, message)
     start(MoveMessage, int spot; int move; int part; int type; int foe; int other; string_ptr data)
@@ -142,6 +143,7 @@ protected:
     start(TempPPChange, int spot; int move; int PP) end (spot, move, PP)
     start(MoveChange, int spot; int slot; int move; bool definite) end (spot, slot, move, definite)
     start(AbilityChange, int spot; int poke; int newAbility) end(spot, poke, newAbility)
+    start(ItemChange, int spot; int poke; int newItem) end(spot, poke, newItem)
     start(RearrangeTeam, int player; std::shared_ptr<ShallowShownTeam>* team) end (player, team)
     start(ChoiceSelection, int player) end (player)
     start(ChoiceCancelled, int player) end (player)
@@ -213,6 +215,7 @@ BattleExtracter<C>::BattleExtracter()
     addCallback(SendOut);
     addCallback(SendBack);
     addCallback(UseAttack);
+    addCallback(UsePP);
     addCallback(Turn);
     addCallback(Hits);
     addCallback(Effectiveness);
@@ -279,6 +282,7 @@ BattleExtracter<C>::BattleExtracter()
     addCallback(ChooseDraw);
     addCallback(UseItem);
     addCallback(ItemCountChange);
+    addCallback(ItemChange);
 
 #undef addCallback
 }

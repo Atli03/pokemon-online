@@ -189,12 +189,12 @@ struct RBYBind : public MM
             addFunction(turn(b,s), "EvenWhenCantMove", "Bind", &ewcm);
             /* Bind does the same damage every turn */
             addFunction(turn(b,s), "CustomAttackingDamage", "Bind", &cad);
-            if (b.gen() <= Pokemon::gen(Gen::Yellow)) {
+            if (!b.isStadium()) {
                 turn(b,b.opponent(s)) ["ForceBind"] = true;
             }
             initMove(fpoke(b,s).lastMoveUsed, b.gen(), tmove(b,s));
+            turn(b,s)["TellPlayers"] = false;
         }
-        turn(b,s)["TellPlayers"] = false;
     }
 
     static void cad(int s, int t, BS &b) {
@@ -220,6 +220,7 @@ struct RBYBind : public MM
         /* Either Bind was used last turn and is ongoing, or was used this turn (and may have finished) */
         if (( (poke(b,s).contains("Bound") || poke(b,t).contains("BindCount")) && poke(b,t).value("LastBind").toInt() >= b.turn()-1) ||
                 poke(b,t).value("LastBind").toInt() == b.turn() || turn(b,s).contains("ForceBind")) {
+            b.sendMoveMessage(10, 4, s);
             turn(b,s)["ImpossibleToMove"] = true;
         }
     }
@@ -262,7 +263,7 @@ struct RBYCounter : public MM
     }
 
     static void daf(int s, int t, BS &b) {
-        int mv = (b.gen() <= Pokemon::gen(Gen::Yellow) ? slot(b, t).lastMoveUsed : fpoke(b,t).lastMoveUsed);
+        int mv = (!b.isStadium() ? slot(b, t).lastMoveUsed : fpoke(b,t).lastMoveUsed);
 
         if (mv == 0 || mv == Move::Counter || MoveInfo::Power(mv, b.gen()) == 0) {
             fturn(b,s).add(TM::Failed);
@@ -450,11 +451,10 @@ struct RBYExplosion : public MM
     static void uas(int s, int t, BS &b) {
         /* Explosion doesn't faint the user if it breaks a sub.
          * However, it faints all the time in Stadium. */
-        if (b.gen() <= Pokemon::gen(Gen::Yellow) && b.hadSubstitute(t))
-            return;
-
-        b.selfKoer() = s;
-        b.koPoke(s, s);
+        if (b.isStadium() || !b.hadSubstitute(t)) {
+            b.selfKoer() = s;
+            b.koPoke(s, s);
+        }
     }
 
     static void asf(int s, int, BS &b) {
@@ -527,8 +527,13 @@ struct RBYHaze : public MM
         b.poke(s).removeStatus(Pokemon::Seeded);
         b.poke(t).removeStatus(Pokemon::Seeded);
 
+        removeFunction(poke(b,s), "MovePossible", "Disable");
+        removeFunction(poke(b,s), "MovesPossible", "Disable");
+        removeFunction(poke(b,t), "MovePossible", "Disable");
+        removeFunction(poke(b,t), "MovesPossible", "Disable");
+
         //Haze clears major status that the user has in Stadium
-        if (b.gen() > Pokemon::gen(Gen::Yellow)) {
+        if (b.isStadium()) {
             b.changeStatus(s, Pokemon::Fine,false);
         }
     }
@@ -563,7 +568,7 @@ struct RBYHyperBeam : public MM
     static void uas(int s, int t, BS &b) {
         /*Hyper Beam always needs to recharge in Stadium
          *KOs and sub breaks dont cause recharge in RBY*/
-        if (b.gen() <= Pokemon::gen(Gen::Yellow) && (b.koed(t) || b.hadSubstitute(t)))
+        if (!b.isStadium() && (b.koed(t) || b.hadSubstitute(t)))
             return;
 
         poke(b,s)["Recharging"] = b.turn()+1;
@@ -578,6 +583,7 @@ struct RBYHyperBeam : public MM
         } else {
             turn(b, s)["TellPlayers"] = false;
             tmove(b, s).targets = Move::User;
+            poke(b,s).remove("Recharging"); //For Hyper Beam Sleep Status override
             addFunction(turn(b,s), "UponAttackSuccessful", "HyperBeam", &aas);
         }
     }
@@ -797,18 +803,19 @@ struct RBYRage : public MM
     }
 
     static void uas(int s, int, BS &b) {
-        addFunction(poke(b,s), "TurnSettings", "Rage", &ts);
-        addFunction(poke(b,s), "UponOffensiveDamageReceived", "Rage", &uodr);
+        addFunction(poke(b, s), "TurnSettings", "Rage", &ts);
+        addFunction(poke(b, s), "UponOffensiveDamageReceived", "Rage", &uodr);
     }
 
     static void ts(int s, int, BS &b) {
         fturn(b,s).add(TM::NoChoice);
-        addFunction(turn(b,s), "AttackSomehowFailed", "Rage", &asf);
+        /*Rage Bug is a lie!*/
+        //addFunction(turn(b,s), "AttackSomehowFailed", "Rage", &asf);
 
         initMove(fpoke(b,s).lastMoveUsed, b.gen(), tmove(b,s));
-        if (poke(b,s).contains("RageFailed")) {
+        /*if (poke(b,s).contains("RageFailed")) {
             tmove(b,s).accuracy = 1;
-        }
+        }*/
     }
 
     static void uodr(int s, int, BS &b) {
@@ -818,9 +825,9 @@ struct RBYRage : public MM
         }
     }
 
-    static void asf(int s, int, BS &b) {
+    /*static void asf(int s, int, BS &b) {
         poke(b,s)["RageFailed"] = true;
-    }
+    }*/
 };
 
 struct RBYRest : public MM

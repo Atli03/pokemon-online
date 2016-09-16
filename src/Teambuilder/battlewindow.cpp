@@ -108,10 +108,10 @@ BattleWindow::BattleWindow(int battleId, const PlayerInfo &me, const PlayerInfo 
     setWindowTitle(tr("Battling against %1").arg(name(info().opponent)));
 
     myclose->setText(tr("&Forfeit"));
-    mylayout->addWidget(mytab = new QTabWidget(), 2, 0, 1, 3);
-    mylayout->addWidget(mycancel = new QPushButton(tr("&Cancel")), 3,0);
+    mylayout->addWidget(mytab = new QTabWidget(), 2, 0, 1, 4);
+    mylayout->addWidget(mycancel = new QPushButton(tr("&Cancel")), 3, 0);
     mylayout->addWidget(myattack = new QPushButton(tr("&Attack")), 3, 1);
-    mylayout->addWidget(myswitch = new QPushButton(tr("&Switch Pokemon")), 3, 2);
+    mylayout->addWidget(myswitch = new QPushButton(tr("&Switch Pokemon")), 3, 2, 1, 2);
     mytab->setObjectName("Modified");
 
     mytab->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -223,11 +223,22 @@ void BattleWindow::changeAttackText(int i)
     }
 }
 
-void BattleWindow::closeEvent(QCloseEvent *)
+void BattleWindow::closeEvent(QCloseEvent *event)
 {
-    checkAndSaveLog();
-    emit forfeit(battleId());
-    close();
+    QSettings s;
+    if (battleEnded || canLeaveBattle || !s.value("Client/ShowExitWarning").toBool()) {
+        checkAndSaveLog();
+        forfeit();
+    } else {
+        QMessageBox::StandardButton die = QMessageBox::question( this, tr("Losing your battle"), tr("Do you mean to forfeit?"),QMessageBox::No | QMessageBox::Yes);
+        if (die != QMessageBox::Yes) {
+            event->ignore();
+        } else {
+            checkAndSaveLog();
+            forfeit();
+            event->accept();
+        }
+    }
 }
 
 void BattleWindow::cancel()
@@ -294,7 +305,8 @@ void BattleWindow::targetChosen(int i)
 
 void BattleWindow::clickClose()
 {
-    if (battleEnded || canLeaveBattle) {
+    QSettings s;
+    if (battleEnded || canLeaveBattle || !s.value("Client/ShowExitWarning").toBool()) {
         forfeit();
         return;
     }
@@ -316,7 +328,8 @@ void BattleWindow::clickClose()
     connect(question, SIGNAL(destroyed()), this, SLOT(nullQuestion()));
 }
 
-void BattleWindow::forfeit() {
+void BattleWindow::forfeit() {    
+    battleEnded = true;
     emit forfeit(battleId());
 }
 
@@ -704,6 +717,14 @@ void BattleWindow::onPPChange(int spot, int move, int)
     mypzone->pokes[data().slotNum(spot)]->updateToolTip();
 }
 
+void BattleWindow::onItemChange(int spot, int, int)
+{
+    if (data().isOut(spot)) {
+        updateAttacks(myazones[data().slotNum(spot)], &info().tempPoke(spot));
+    }
+    mypzone->pokes[data().slotNum(spot)]->updateToolTip();
+}
+
 void BattleWindow::onTempPPChange(int spot, int move, int)
 {
     myazones[data().slotNum(spot)]->tattacks[move]->updateAttack(info().tempPoke(spot).move(move)->exposedData(), info().tempPoke(spot), gen());
@@ -869,7 +890,7 @@ void BattleWindow::updateChoices()
             mypzone->pokes[i]->setEnabled(poke(i).num() != 0 && poke(i).life() > 0);
         }
     }
-    
+
     if (!info().possible) {
         myattack->setEnabled(false);
         myswitch->setEnabled(false);
@@ -880,6 +901,11 @@ void BattleWindow::openRearrangeWindow(const ShallowShownTeam &t)
 {
     RearrangeWindow *r = new RearrangeWindow(info()._myteam, t);
     r->setParent(this, Qt::Window | Qt::Dialog);
+    //since this is a temp window, we won't bother going through changing it when the tick box is toggled
+    QSettings settings;
+    if (settings.value("Battle/AlwaysOnTop").toBool()) {
+        r->setWindowFlags(r->windowFlags() | Qt::WindowStaysOnTopHint);
+    }
     r->move(x() + (width()-r->width())/2, y() + (height()-r->height())/2);
     r->show();
     r->move(x() + (width()-r->width())/2, y() + (height()-r->height())/2);
@@ -887,7 +913,7 @@ void BattleWindow::openRearrangeWindow(const ShallowShownTeam &t)
     if (r->x() < 0 || r->y() < 0) {
         r->move(std::max(r->x(), 0), std::max(r->y(), 0));
     }
-
+    this->alwaysOnTopChanged(false, false);
     connect(r, SIGNAL(forfeit()), SLOT(clickClose()));
     connect(r, SIGNAL(done()), SLOT(sendRearrangedTeam()));
     connect(r, SIGNAL(done()), r, SLOT(deleteLater()));
@@ -895,18 +921,24 @@ void BattleWindow::openRearrangeWindow(const ShallowShownTeam &t)
 
 void BattleWindow::sendRearrangedTeam()
 {
-    RearrangeChoice r;
+    if (!started()) {
+        RearrangeChoice r;
 
-    for (int i = 0; i < 6; i++)
-        r.pokeIndexes[i] = info()._myteam.internalId(info()._myteam.poke(i));
+        for (int i = 0; i < 6; i++)
+            r.pokeIndexes[i] = info()._myteam.internalId(info()._myteam.poke(i));
 
-    BattleChoice c = BattleChoice(data().spot(info().myself), r);
-    sendChoice(c);
+        BattleChoice c = BattleChoice(data().spot(info().myself), r);
+        sendChoice(c);
 
-    /* If the team was rearranged... */
-    reloadTeam(ownid()==conf().ids[0] ? 0 : 1);
-    for (int i = 0; i < 6; i++) {
-        mypzone->pokes[i]->changePokemon(poke(i));
+        /* If the team was rearranged... */
+        reloadTeam(ownid()==conf().ids[0] ? 0 : 1);
+        for (int i = 0; i < 6; i++) {
+            mypzone->pokes[i]->changePokemon(poke(i));
+        }
+    }
+    QSettings settings;
+    if (settings.value("Battle/AlwaysOnTop").toBool()) {
+        this->alwaysOnTopChanged(true, false);
     }
 }
 
@@ -1015,9 +1047,16 @@ void OldAttackButton::updateAttack(const BattleMove &b, const PokeProxy &p, Poke
     QString ttext = tr("%1\n\nPower: %2\nAccuracy: %3\nCategory: %4\n\nDescription: %5").arg(MoveInfo::Name(b.num()), power,
                                                                                                 MoveInfo::AccS(b.num(), gen), moveCategory,
                                                                                                 MoveInfo::Description(b.num(), gen));
-
-    int type = b.num() == Move::HiddenPower ?
-                HiddenPowerInfo::Type(gen, p.dvs()[0], p.dvs()[1],p.dvs()[2],p.dvs()[3],p.dvs()[4],p.dvs()[5]) : MoveInfo::Type(b.num(), gen);
+    int type = MoveInfo::Type(b.num(), gen);
+    if (b.num() == Move::HiddenPower) {
+        type = HiddenPowerInfo::Type(gen, p.dvs()[0], p.dvs()[1],p.dvs()[2],p.dvs()[3],p.dvs()[4],p.dvs()[5]);
+    } else if (b.num() == Move::Judgment && ItemInfo::isPlate(p.item())) {
+        type = ItemInfo::PlateType(p.item());
+    } else if (b.num() == Move::TechnoBlast && ItemInfo::isDrive(p.item())) {
+        type = ItemInfo::DriveType(p.item());
+    } else if (b.num() == Move::NaturalGift && ItemInfo::isBerry(p.item())) {
+        type = ItemInfo::BerryType(p.item());
+    }
     /*QString model = QString("db/BattleWindow/Buttons/%1%2.png").arg(type);
     changePics(model.arg("D"), model.arg("H"), model.arg("C"));*/
     setStyleSheet(QString("background: %1;").arg(Theme::TypeColor(type).name()));
@@ -1061,8 +1100,16 @@ void ImageAttackButton::updateAttack(const BattleMove &b, const PokeProxy &p, Po
                                                                                                 MoveInfo::AccS(b.num(), gen), moveCategory,
                                                                                                 MoveInfo::Description(b.num(), gen), MoveInfo::TargetS(b.num(), gen));
 
-    int type = b.num() == Move::HiddenPower ?
-                HiddenPowerInfo::Type(gen, p.dvs()[0], p.dvs()[1],p.dvs()[2],p.dvs()[3],p.dvs()[4],p.dvs()[5]) : MoveInfo::Type(b.num(), gen);
+    int type = MoveInfo::Type(b.num(), gen);
+    if (b.num() == Move::HiddenPower) {
+        type = HiddenPowerInfo::Type(gen, p.dvs()[0], p.dvs()[1],p.dvs()[2],p.dvs()[3],p.dvs()[4],p.dvs()[5]);
+    } else if (b.num() == Move::Judgment && ItemInfo::isPlate(p.item())) {
+        type = ItemInfo::PlateType(p.item());
+    } else if (b.num() == Move::TechnoBlast && ItemInfo::isDrive(p.item())) {
+        type = ItemInfo::DriveType(p.item());
+    } else if (b.num() == Move::NaturalGift && ItemInfo::isBerry(p.item())) {
+        type = ItemInfo::BerryType(p.item());
+    }
     QString model = QString("BattleWindow/Buttons/%1%2.png").arg(type);
     changePics(Theme::path(model.arg("D")), Theme::path(model.arg("H")), Theme::path(model.arg("C")));
 
@@ -1128,25 +1175,31 @@ void BattlePokeButton::updateToolTip()
 {
     const PokeProxy &p = *(this->p);
     QString tooltip;
+
+    QString moves[4] = {};
+    for (int i = 0; i < 4; i++) {
+        QString type = "";
+        QString pp = tr(" - %1/%2 PP").arg(p.move(i)->PP()).arg(p.move(i)->totalPP());
+        if (p.move(i)->num() == Move::HiddenPower) {
+            type = QString(" [%1]").arg(TypeInfo::Name(HiddenPowerInfo::Type(p.gen(), p.dvs()[0], p.dvs()[1],p.dvs()[2],p.dvs()[3],p.dvs()[4],p.dvs()[5])));
+        }
+        if (p.move(i)->num() == Move::NoMove) {
+            pp = "";
+        }
+        moves[i] = QString("%1%2%3").arg(MoveInfo::Name(p.move(i)->num())).arg(type).arg(pp);
+    }
+
     if (p.ability() != 0) {
-        tooltip = tr("%1 lv %2\n\nItem:%3\nAbility:%4\n\nMoves:\n--%5 - %9 PP\n--%6 - %10 PP\n--%7 - %11 PP\n--%8 - %12 PP")
+        tooltip = tr("%1 lv %2\n\nItem:%3\nAbility:%4\n\nMoves:\n--%5\n--%6\n--%7\n--%8")
                 .arg(PokemonInfo::Name(p.num()), QString::number(p.level()), ItemInfo::Name(p.item()),
-                     AbilityInfo::Name(p.ability()), MoveInfo::Name(p.move(0)->num()), MoveInfo::Name(p.move(1)->num()),
-                     MoveInfo::Name(p.move(2)->num()), MoveInfo::Name(p.move(3)->num())).arg(p.move(0)->PP()).arg(p.move(1)->PP())
-                .arg(p.move(2)->PP()).arg(p.move(3)->PP());
+                     AbilityInfo::Name(p.ability())).arg(moves[0]).arg(moves[1]).arg(moves[2]).arg(moves[3]);
     } else if (p.ability() == 0) {
         if (p.item() != 0) {
-            tooltip = tr("%1 lv %2\nItem:%3\n\nMoves:\n--%5 - %9 PP\n--%6 - %10 PP\n--%7 - %11 PP\n--%8 - %12 PP")
-                    .arg(PokemonInfo::Name(p.num()), QString::number(p.level()), ItemInfo::Name(p.item()),
-                         MoveInfo::Name(p.move(0)->num()), MoveInfo::Name(p.move(1)->num()),
-                         MoveInfo::Name(p.move(2)->num()), MoveInfo::Name(p.move(3)->num())).arg(p.move(0)->PP()).arg(p.move(1)->PP())
-                    .arg(p.move(2)->PP()).arg(p.move(3)->PP());
+            tooltip = tr("%1 lv %2\n\nItem:%3\n\nMoves:\n--%4\n--%5\n--%6\n--%7")
+                    .arg(PokemonInfo::Name(p.num()), QString::number(p.level()), ItemInfo::Name(p.item())).arg(moves[0]).arg(moves[1]).arg(moves[2]).arg(moves[3]);
         } else {
-            tooltip = tr("%1 lv %2\n\nMoves:\n--%5 - %9 PP\n--%6 - %10 PP\n--%7 - %11 PP\n--%8 - %12 PP")
-                    .arg(PokemonInfo::Name(p.num()), QString::number(p.level()),
-                         MoveInfo::Name(p.move(0)->num()), MoveInfo::Name(p.move(1)->num()),
-                         MoveInfo::Name(p.move(2)->num()), MoveInfo::Name(p.move(3)->num())).arg(p.move(0)->PP()).arg(p.move(1)->PP())
-                    .arg(p.move(2)->PP()).arg(p.move(3)->PP());
+            tooltip = tr("%1 lv %2\n\nMoves:\n--%3\n--%4\n--%5\n--%6")
+                    .arg(PokemonInfo::Name(p.num()), QString::number(p.level())).arg(moves[0]).arg(moves[1]).arg(moves[2]).arg(moves[3]);
         }
     }
     setToolTip(tooltip);

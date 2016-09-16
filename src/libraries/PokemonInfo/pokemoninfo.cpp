@@ -65,6 +65,8 @@ QHash<int,int> ItemInfo::m_BerryTypes;
 QHash<int, bool> ItemInfo::m_UsefulItems, ItemInfo::m_UsefulBerries;
 QVector<QSet<int> > ItemInfo::m_GenItems;
 QHash<int,QString> ItemInfo::m_ItemDesc;
+QHash<int,QString> ItemInfo::m_BerryDesc;
+QHash<Pokemon::uniqueId,int> ItemInfo::m_StoneFormes;
 
 QHash<int, QString> TypeInfo::m_Names;
 QString TypeInfo::m_Directory;
@@ -1027,6 +1029,21 @@ QString PokemonInfo::Name(const Pokemon::uniqueId &pokeid)
     }
 }
 
+QStringList PokemonInfo::Names(Pokemon::gen gen, bool returnFormes)
+{
+    QStringList ret;
+
+    QList<Pokemon::uniqueId> ids = AllIds();
+
+    foreach (Pokemon::uniqueId id, ids) {
+        if (Exists(id, gen) && !(id.isForme() && !returnFormes)) {
+            ret << Name(id);
+        }
+    }
+
+    return ret;
+}
+
 bool PokemonInfo::Exists(const Pokemon::uniqueId &pokeid, Pokemon::gen gen)
 {
     if (pokeid == 0) {
@@ -1429,9 +1446,14 @@ bool PokemonInfo::HasFormes(const Pokemon::uniqueId &pokeid)
     return NumberOfAFormes(pokeid) > 0;
 }
 
+bool PokemonInfo::HasMegaEvo(const Pokemon::uniqueId &pokeid)
+{
+    return m_Options.value(pokeid.pokenum).contains('H');
+}
+
 bool PokemonInfo::AFormesShown(const Pokemon::uniqueId &pokeid)
 {
-    return !m_Options.value(pokeid.pokenum).contains('H');
+    return !(m_Options.value(pokeid.pokenum).contains('B') || m_Options.value(pokeid.pokenum).contains('H'));
 }
 
 bool PokemonInfo::IsMegaEvo(const Pokemon::uniqueId &pokeid)
@@ -1873,7 +1895,27 @@ QString MoveInfo::Name(int movenum)
 
 QStringList MoveInfo::Names()
 {
-    return m_Names.values();
+    QStringList ret;
+
+    for (int i = 0; i < NumberOfMoves(); i++) {
+        ret << Name(i);
+    }
+
+    return ret;
+}
+
+QStringList MoveInfo::Names(Pokemon::gen gen)
+{
+    QStringList ret;
+    QSet<int> genMoves = Moves(gen);
+
+    for (int i = 0; i < NumberOfMoves(); i++) {
+        if (genMoves.contains(i)) {
+            ret << Name(i);
+        }
+    }
+
+    return ret;
 }
 
 #define move_find(var, mv, g) do {\
@@ -2185,6 +2227,7 @@ void ItemInfo::init(const QString &dir)
     loadNames();
     loadEffects();
     loadFlingData();
+    loadStoneFormes();
     loadMessages();
     loadDescriptions();
 }
@@ -2275,6 +2318,11 @@ void ItemInfo::loadNames()
     }
 }
 
+void ItemInfo::loadStoneFormes()
+{
+    fill_uid_int(m_StoneFormes, path("item_for_forme.txt"));
+}
+
 void ItemInfo::loadMessages()
 {
     ::loadMessages(path("item_messages.txt"), m_RegMessages);
@@ -2283,7 +2331,8 @@ void ItemInfo::loadMessages()
 
 void ItemInfo::loadDescriptions()
 {
-    fill_int_str(m_ItemDesc, path("item_descriptions.txt"));
+    fill_int_str(m_ItemDesc, path("items_description.txt"));
+    fill_int_str(m_BerryDesc, path("berries_description.txt"));
 }
 
 void ItemInfo::loadFlingData()
@@ -2377,7 +2426,11 @@ QString ItemInfo::path(const QString &file)
 
 QString ItemInfo::ItemDesc(int item)
 {
-    return m_ItemDesc[item];
+    if (isBerry(item)) {
+        return m_BerryDesc[item-8000];
+    } else {
+        return m_ItemDesc[item];
+    }
 }
 
 int ItemInfo::NumberOfItems()
@@ -2608,6 +2661,11 @@ int ItemInfo::DriveForForme(int forme)
     }
 }
 
+int ItemInfo::StoneForForme(const Pokemon::uniqueId &pokeid)
+{
+    return m_StoneFormes.value(pokeid);
+}
+
 bool ItemInfo::IsBattleItem(int itemnum, Pokemon::gen gen)
 {
     if (isBerry(itemnum))  {
@@ -2813,6 +2871,26 @@ QString TypeInfo::Name(int typenum)
     return m_Names.value(typenum);
 }
 
+QStringList TypeInfo::Names(Pokemon::gen gen)
+{
+    QStringList ret;
+
+    for (int i = 0; i < NumberOfTypes(); i++) {
+        ret << Name(i);
+    }
+
+    if (gen.num < 6) {
+        ret.removeOne("Fairy");
+    }
+
+    if (gen.num < 2) {
+        ret.removeOne("Steel");
+        ret.removeOne("Dark");
+    }
+
+    return ret;
+}
+
 int TypeInfo::NumberOfTypes()
 {
     return m_Names.size();
@@ -2853,6 +2931,21 @@ QString NatureInfo::path(const QString &filename)
 QString NatureInfo::Name(int naturenum)
 {
     return m_Names.value(naturenum);
+}
+
+QStringList NatureInfo::Names(Pokemon::gen gen)
+{
+    if (gen.num > 2) {
+        QStringList ret;
+
+        for (int i = 0; i < NumberOfNatures(); i++) {
+            ret << Name(i);
+        }
+
+        return ret;
+    } else {
+        return QStringList("Hardy");
+    }
 }
 
 int NatureInfo::NumberOfNatures()
@@ -2941,6 +3034,17 @@ QString CategoryInfo::Name(int catnum)
     return m_Names.value(catnum);
 }
 
+QStringList CategoryInfo::Names()
+{
+    QStringList ret;
+
+    for (int i = 0; i < NumberOfCategories(); i++) {
+        ret << Name(i);
+    }
+
+    return ret;
+}
+
 int CategoryInfo::NumberOfCategories()
 {
     return m_Names.size();
@@ -2995,7 +3099,19 @@ QString AbilityInfo::path(const QString &filename)
 
 bool AbilityInfo::Exists(int ability, Pokemon::gen gen)
 {
-    return gen <= 3 ? ability <= Ability::AirLock : (gen ==4 ? ability <=  Ability::BadDreams : true);
+    if (gen <= 3 && ability > Ability::AirLock) {
+        return false;
+    }
+    if (gen <= 4 && ability > Ability::BadDreams) {
+        return false;
+    }
+    if (gen <= 5 && ability > Ability::TeraVolt) {
+        return false;
+    }
+    if (gen <= 6 && ability < Ability::NoAbility) {
+        return false;
+    }
+    return true;
 }
 
 void AbilityInfo::loadEffects()
@@ -3051,6 +3167,18 @@ QString AbilityInfo::Name(int abnum)
     return m_Names[abnum];
 }
 
+QStringList AbilityInfo::Names(Pokemon::gen gen)
+{
+    int n = NumberOfAbilities(gen);
+    QStringList ret;
+
+    for (int i = 0; i < n; i++) {
+        ret << Name(i);
+    }
+
+    return ret;
+}
+
 bool AbilityInfo::moldBreakable(int abnum)
 {
     return m_moldBreaker[abnum];
@@ -3068,8 +3196,10 @@ int AbilityInfo::NumberOfAbilities(Pokemon::gen g)
             hc = 1; //No Ability
         } else if (g <= 3) {
             hc = 77; //Air lock
-        } else if (g <= 4 || 1) {
+        } else if (g <= 4) {
             hc = 124; //Bad dreams
+        } else if (g <= 5 || 1) {
+            hc = 165; //Teravolt
         }
         return std::min(hc, total); //safety check, in case db was edited
     }
@@ -3131,6 +3261,11 @@ bool GenderInfo::Possible(int gender, int genderAvail) {
 int GenderInfo::NumberOfGenders()
 {
     return m_Names.size();
+}
+
+int GenderInfo::Number(const QString &name)
+{
+    return m_Names.key(name, Pokemon::Neutral);
 }
 
 void HiddenPowerInfo::init(const QString &dir)
@@ -3234,6 +3369,37 @@ QString StatInfo::ShortStatus(int stat)
     default:
         return "";
     }
+}
+
+QStringList StatInfo::StatusNames()
+{
+    QStringList ret;
+
+    for (int i = 0; i < NumberOfStatuses(); i++) {
+        ret << Status(i);
+    }
+
+    return ret;
+}
+
+int StatInfo::StatusNumber(const QString &name)
+{
+    QList<int> ids = m_status.keys();
+
+    foreach (int id, ids)
+    {
+        if (m_status[id].toLower() == name.toLower())
+        {
+            return id;
+        }
+    }
+
+    return -1;
+}
+
+int StatInfo::NumberOfStatuses()
+{
+    return m_status.size();
 }
 
 QString StatInfo::path(const QString &filename)

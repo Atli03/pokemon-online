@@ -43,6 +43,8 @@ class ShallowBattlePoke
     PROPERTY(quint8, gender)
     PROPERTY(quint8, level)
     PROPERTY(quint16, ability)
+    PROPERTY(quint16, item)
+    PROPERTY(bool, illegal)
 public:
     ShallowBattlePoke();
     ShallowBattlePoke(const PokeBattle &poke);
@@ -64,6 +66,7 @@ public:
     virtual void setLifePercent(quint8 percent) {mLifePercent = percent;}
     void setNum(Pokemon::uniqueId num) {this->num() = num;}
     void setAbility(quint16 ability) {this->ability() = ability;}
+    void setItem(quint16 item) {this->item() = item;}
 
     bool operator == (const ShallowBattlePoke &other) const {
         return gender() == other.gender() && level() == other.level()
@@ -95,6 +98,8 @@ class PokeBattle : public ShallowBattlePoke
     PROPERTY(quint16, itemUsedTurn)
     PROPERTY(qint8, statusCount)
     PROPERTY(qint8, oriStatusCount)
+    /* ADV Sleep has some weird mechanics */
+    PROPERTY(qint8, advSleepCount)
 public:
     PokeBattle();
 
@@ -142,7 +147,7 @@ public:
     TeamBattle(PersonalTeam &other);
     TeamBattle(Team &other);
 
-    void generateRandom(Pokemon::gen gen);
+    void generateRandom(Pokemon::gen gen, bool illegal);
 
     PokeBattle& poke(int i);
     const PokeBattle& poke(int i) const;
@@ -500,8 +505,12 @@ struct ChallengeInfo
 
     /* Insensitive case search for the clause, returns -1 if not found */
     static int clause (const QString &name) {
+        QString clausename = name;
+        if (clausename.toLower() == "wifi battle") {
+            clausename = "team preview"; //compatability
+        }
         for (int i = 0; i < numberOfClauses; i++) {
-            if (clauseText[i].toLower() == name.toLower()) {
+            if (clauseText[i].toLower() == clausename.toLower()) {
                 return i;
             }
         }
@@ -546,12 +555,13 @@ struct BattlePlayer
     quint8 restrictedCount;
     /* Maximum number of pokes per team */
     quint8 teamCount;
-
+    QString bannedPokes;
+    bool allowIllegal;
     BattlePlayer(){}
     BattlePlayer(const QString &name, int id, int rating=0, int avatar=0, const QString &win="", const QString &lose="",
-                 const QString &tie="", int maxlevel=100, int restrictedPokes=0, int restrictedCount=0, int teamCount=6)
+                 const QString &tie="", int maxlevel=100, int restrictedPokes=0, int restrictedCount=0, int teamCount=6, const QString &bannedPokes="", bool allowIllegal = false)
         : name(name), win(win), lose(lose), tie(tie), rating(rating), avatar(avatar), id(id), maxlevel(maxlevel),
-          restrictedPokes(restrictedPokes), restrictedCount(restrictedCount), teamCount(teamCount){}
+          restrictedPokes(restrictedPokes), restrictedCount(restrictedCount), teamCount(teamCount), bannedPokes(bannedPokes), allowIllegal(allowIllegal){}
 };
 
 DataStream & operator >> (DataStream &in, BattlePlayer &p);

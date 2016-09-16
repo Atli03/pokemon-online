@@ -110,6 +110,14 @@ void BattleInput::dealWithCommandInfo(DataStream &in, uchar command, int spot)
         output<BattleEnum::UseAttack>(spot, attack, silent, special);
         break;
     }
+    case BC::UsePP:
+    {
+        qint16 attack;
+        quint8 ppsum;
+        in >> attack >> ppsum;
+        output<BattleEnum::UsePP>(spot, attack, ppsum);
+        break;
+    }
     case BC::BeginTurn:
     {
         int turn;
@@ -241,11 +249,17 @@ void BattleInput::dealWithCommandInfo(DataStream &in, uchar command, int spot)
         break;
     }
     case BC::BattleChat:
+    {
+        auto message = mk<QString>();
+        in >> *message;
+        output<BattleEnum::PlayerMessage>(spot, &message, false);
+        break;
+    }
     case BC::EndMessage:
     {
         auto message = mk<QString>();
         in >> *message;
-        output<BattleEnum::PlayerMessage>(spot, &message);
+        output<BattleEnum::PlayerMessage>(spot, &message, true);
         break;
     }
     case BC::Spectating:
@@ -361,6 +375,8 @@ void BattleInput::dealWithCommandInfo(DataStream &in, uchar command, int spot)
         if (ab == 14) {
             /* Weather message */
             output<BattleEnum::StartWeather>(spot, part+1, true); //true is for ability-weather
+        } else if (ab == 126 && other < 1) {
+            output<BattleEnum::StartWeather>(spot, part+5, true); //true is for ability-weather
         } else {
             output<BattleEnum::AbilityMessage>(spot, ab, part, type, foe, other);
         }
@@ -426,6 +442,11 @@ void BattleInput::dealWithCommandInfo(DataStream &in, uchar command, int spot)
             quint16 newability;
             in >> poke >> newability;
             output<BattleEnum::AbilityChange>(spot, poke, newability);
+        } else if (type == BC::TempItem) {
+            quint8 poke;
+            quint16 newitem;
+            in >> poke >> newitem;
+            output<BattleEnum::ItemChange>(spot, poke, newitem);
         } else if (type == BC::TempPP) {
             qint8 slot;
             qint8 PP;

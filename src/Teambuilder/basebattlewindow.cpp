@@ -17,6 +17,7 @@
 
 #include "basebattlewindow.h"
 #include "logmanager.h"
+#include "damagecalc.h"
 
 using namespace BattleCommands;
 
@@ -131,13 +132,15 @@ void BaseBattleWindow::init()
     QHBoxLayout *columns = new QHBoxLayout(this);
     columns->addLayout(mylayout = new QGridLayout());
 
-    mylayout->addWidget(getSceneWidget(), 0, 0, 1, 3);
+    mylayout->addWidget(getSceneWidget(), 0, 0, 1, 4);
     QSettings settings;
     bool saveLog = settings.value("Battle/SaveLogs").toBool();
-    mylayout->addWidget(saveLogs = new QCheckBox(tr("Save log")), 1, 0, 1, 2);
+    mylayout->addWidget(saveLogs = new QCheckBox(tr("Save log")), 1, 0, 1, 1);
     saveLogs->setChecked(saveLog);
-    mylayout->addWidget(musicOn = new QCheckBox(tr("Music")), 1, 1, 1, 2);
+    mylayout->addWidget(musicOn = new QCheckBox(tr("Music")), 1, 1, 1, 1);
     mylayout->addWidget(flashWhenMoveDone = new QCheckBox(tr("Flash when a move is done")), 1, 2, 1, 1);
+    mylayout->addWidget(alwaysOnTop = new QCheckBox(tr("Always on top")), 1, 3, 1, 1);
+    alwaysOnTop->setChecked(settings.value("Battle/AlwaysOnTop").toBool());
 
     QSettings s;
     musicOn->setChecked(s.value("BattleAudio/PlayMusic").toBool() || s.value("play_battle_cries").toBool());
@@ -154,13 +157,15 @@ void BaseBattleWindow::init()
     buttons->addWidget(mysend = new QPushButton(tr("C&hat")));
     buttons->addWidget(myclose = new QPushButton(tr("&Close")));
     buttons->addWidget(myignore = new QPushButton(tr("&Ignore spectators")));
+    buttons->addWidget(mycalc = new QPushButton(tr("&Damage Calc")));
 
     connect(musicOn, SIGNAL(toggled(bool)), SLOT(musicPlayStop()));
     connect(myignore, SIGNAL(clicked()), SLOT(ignoreSpectators()));
     connect(myclose, SIGNAL(clicked()), SLOT(clickClose()));
     connect(myline, SIGNAL(returnPressed()), this, SLOT(sendMessage()));
     connect(mysend, SIGNAL(clicked()), SLOT(sendMessage()));
-
+    connect(mycalc, SIGNAL(clicked()), SLOT(openCalc()));
+    connect(alwaysOnTop, SIGNAL(toggled(bool)), SLOT(alwaysOnTopChanged(bool)));
     loadSettings(this);
 
 #ifdef QT5
@@ -188,6 +193,7 @@ void BaseBattleWindow::init()
     undelayOnSounds = true;
 
     musicPlayStop();
+    alwaysOnTopChanged(alwaysOnTop->isChecked());
 }
 
 bool BaseBattleWindow::musicPlayed() const
@@ -425,6 +431,13 @@ void BaseBattleWindow::clickClose()
     return;
 }
 
+void BaseBattleWindow::openCalc()
+{
+    DamageCalc *calc = new DamageCalc(myInfo->gen.num);
+    calc->setAttribute(Qt::WA_DeleteOnClose, true);
+    calc->show();
+}
+
 void BaseBattleWindow::sendMessage()
 {
     QString message = myline->text();
@@ -530,4 +543,32 @@ void BaseBattleWindow::addSpectator(bool come, int id, const QString &)
     } else {
         spectators.remove(id);
     }
+}
+
+void BaseBattleWindow::alwaysOnTopChanged(bool state, bool save)
+{
+    QSettings s;
+
+    //qt windows bug
+#ifdef Q_OS_WIN
+#include <windows.h>
+    if (state)
+    {
+        SetWindowPos((HWND)this->winId(), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+    else
+    {
+        SetWindowPos((HWND)this->winId(), HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+#else
+    if (state) {
+        this->setWindowFlags(this->windowFlags() | Qt::WindowStaysOnTopHint);
+    } else {
+        this->setWindowFlags(this->windowFlags() & ~Qt::WindowStaysOnTopHint);
+    }
+#endif
+    if (save) {
+        s.setValue("Battle/AlwaysOnTop", state);
+    }
+    this->show();
 }

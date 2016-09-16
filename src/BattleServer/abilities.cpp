@@ -136,8 +136,8 @@ struct AMArenaTrap : public AM {
 
 struct AMBadDreams : public AM {
     AMBadDreams() {
-        functions["EndTurn6.10"] = &et; /* Gen 4 */
-        functions["EndTurn26.1"] = &et; /* Gen 5 */
+        functions["EndTurn6.11"] = &et; /* Gen 4 */
+        functions["EndTurn28.1"] = &et; /* Gen 5 */
     }
 
     static void et (int s, int, BS &b) {
@@ -352,7 +352,7 @@ struct AMDrizzle : public AM {
         int w = poke(b,s)["AbilityArg"].toInt();
         if (w != b.weather) {
             if (b.weather == BS::StrongSun || b.weather == BS::StrongRain || b.weather == BS::StrongWinds) {
-                b.sendAbMessage(126, b.weather-2, s, s, TypeInfo::TypeForWeather(b.weather));
+                b.sendAbMessage(126, b.weather-2, s, s, TypeInfo::TypeForWeather(b.weather), 1);
                 return;
             }
             b.sendAbMessage(14,w-1,s,s,TypeInfo::TypeForWeather(w));
@@ -508,7 +508,7 @@ struct AMForeCast : public AM {
         functions["WeatherChange"] = &us;
         functions["OnLoss"] = &ol;
         functions["EndTurn12.0"] = &us; /* Gen 4 */
-        functions["EndTurn29.0"] = &us; /* Gen 5 */
+        functions["EndTurn31.0"] = &us; /* Gen 5 */
     }
     /*At the end of each turn, Castform's type is re-adjusted to what the weather is, overriding Soak, etc.*/
 
@@ -518,7 +518,13 @@ struct AMForeCast : public AM {
 
         int weather = b.weather;
         if (weather != BS::Hail && weather != BS::Rain && weather != BS::Sunny) {
-            weather = BS::NormalWeather;
+            if (weather == BS::StrongRain) {
+                weather = BS::Rain;
+            } else if (weather == BS::StrongSun) {
+                weather = BS::Sunny;
+            } else {
+                weather = BS::NormalWeather;
+            }
         }
 
         //To allow the type reset every turn
@@ -641,11 +647,12 @@ struct AMGuts : public AM {
     static void sm (int s, int, BS &b) {
         /* Guts doesn't activate on a sleeping poke that used Rest (but other ways of sleeping
             make it activated) */
+        /* Update Oct 2015: Apparently it does activate in Gen 3 */
         if (b.poke(s).status() != Pokemon::Fine) {
-            if (b.gen() > 3 || b.ability(s) == Ability::MarvelScale || b.poke(s).status() != Pokemon::Asleep || !poke(b,s).value("Rested").toBool()) {
+            //if (b.gen() > 3 || b.ability(s) == Ability::MarvelScale || b.poke(s).status() != Pokemon::Asleep || !poke(b,s).value("Rested").toBool()) {
                 int arg = poke(b,s)["AbilityArg"].toInt();
                 turn(b,s)[QString("Stat%1AbilityModifier").arg(arg)] = 10;
-            }
+            //}
         }
     }
 };
@@ -1021,7 +1028,7 @@ struct AMSlowStart : public AM {
     AMSlowStart() {
         functions["UponSetup"] = &us;
         functions["EndTurn12.0"] = &et; /* gen 4 */
-        functions["EndTurn29.0"] = &et; /* gen 5 */
+        functions["EndTurn31.0"] = &et; /* gen 5 */
         functions["StatModifier"] = &sm;
     }
 
@@ -1080,7 +1087,7 @@ struct AMSoundProof : public AM {
 struct AMSpeedBoost : public AM {
     AMSpeedBoost() {
         functions["EndTurn6.2"] = &et; /* Gen 4 */
-        functions["EndTurn26.1"] = &et; /* Gen 5 */
+        functions["EndTurn28.1"] = &et; /* Gen 5 */
     }
 
     static void et(int s, int, BS &b) {
@@ -1187,8 +1194,14 @@ struct AMTruant : public AM {
 
     static void dap(int s, int, BS &b) {
         if (!poke(b, s).contains("TruantActiveTurn")) {
-            poke(b,s)["TruantActiveTurn"] = b.turn()%2;
+            if (poke(b,s).value("MegaEvolveTurn") == b.turn() || poke(b,s).value("MegaEvolveTurn") == b.turn()-1) {
+                //If you Mega Evolve and get Truant on the same turn, you immediately loaf around on your next move
+                poke(b,s)["TruantActiveTurn"] = (b.turn()+1)%2;
+            } else {
+                poke(b,s)["TruantActiveTurn"] = b.turn()%2;
+            }
         }
+
         if (b.turn()%2 != poke(b,s)["TruantActiveTurn"].toInt()) {
             turn(b,s)["ImpossibleToMove"] = true;
             b.sendAbMessage(67,0,s);
@@ -1240,6 +1253,12 @@ struct AMWonderGuard : public AM {
         /* Fire fang always hits through Wonder Guard, at least in 4th gen... */
         if (tmove(b,t).power > 0 && tp != Pokemon::Curse && (b.gen() >= 5 || move(b, t) != Move::FireFang)) {
             int mod = b.rawTypeEff(tp, s);
+
+            //freeze dry hits through wonderguard if it would hit water for SE damage
+            //flying press needs testing for the same thing
+            if (tmove(b,t).attack == Move::FreezeDry && (fpoke(b,s).type1 == Type::Water || fpoke(b,s).type2 == Type::Water)) {
+                mod+=1;
+            }
 
             if (mod <= 0) {
                 b.sendAbMessage(71,0,s);
@@ -1501,7 +1520,7 @@ struct AMDefeatist : public AM {
 
 struct AMZenMode : public AM {
     AMZenMode() {
-        functions["EndTurn27.0"] = &et;
+        functions["EndTurn29.0"] = &et;
         functions["OnLoss"] = &ol;
         functions["UponSetup"] = &et;
     }
@@ -1762,7 +1781,7 @@ struct AMMagicBounce : public AM
                     if (b.koed(t)) {
                         continue;
                     }
-                    if (b.hasWorkingAbility(t, Ability::MagicBounce) && !b.hasWorkingAbility(s, Ability::MoldBreaker)) {
+                    if (b.hasWorkingAbility(t, Ability::MagicBounce) && !(b.hasWorkingAbility(s, Ability::MoldBreaker) || b.hasWorkingAbility(s, Ability::TurboBlaze) ||b.hasWorkingAbility(s, Ability::TeraVolt))) {
                         target = t;
                         break;
                     }
@@ -1810,7 +1829,7 @@ struct AMMagicBounce : public AM
 struct AMHarvest : public AM
 {
     AMHarvest() {
-        functions["EndTurn26.1"] = &et;
+        functions["EndTurn28.1"] = &et;
     }
 
     static void et(int s, int, BS &b) {
@@ -1920,7 +1939,7 @@ struct AMJustified : public AM {
 
 struct AMMoody : public AM {
     AMMoody() {
-        functions["EndTurn26.1"] = &et;
+        functions["EndTurn28.1"] = &et;
     }
 
     static void et(int s, int, BS &b) {
@@ -2066,7 +2085,7 @@ struct AMRegenerator : public AM {
 
 struct AMPickUp : public AM {
     AMPickUp() {
-        functions["EndTurn26.1"] = &et;
+        functions["EndTurn28.3"] = &et;
     }
 
     static void et(int s, int, BS &b) {
@@ -2231,12 +2250,32 @@ struct AMMegaLauncher : public AM {
 struct AMProtean : public AM {
     AMProtean() {
         functions["BeforeTargetList"] = &aaf;
+        functions["ActivateProtean"] = &bh;
     }
 
     static void aaf (int s, int, BS &b) {
-        if (type(b,s) != Pokemon::Curse && b.turnMemory(s)["MoveChosen"].toInt() != 0) {
-            b.setType(s, type(b,s));
+        int mc = b.turnMemory(s)["MoveChosen"].toInt();
+        if (type(b,s) != Pokemon::Curse && mc != 0 && !b.battleMemory().contains("CoatingAttackNow")) {
+            //Protean doesn't change on moves that are calling other moves. Mirror move doesn't change type, but Snatch does.
+            if (mc != Move::MirrorMove && mc != Move::SleepTalk && mc != Move::Copycat && mc != Move::MeFirst && mc != Move::NaturePower && mc != Move::Metronome && mc != Move::Assist) {
+                fturn(b,s).stab = 3;
+                poke(b,s)["ProteanActivated"] = true;
+            }
+        }
+        //Copied from snatch. The fail check is reversed because we want it to fail if snatched, instead of working
+        if (b.battleMemory().contains("Snatcher")) {
+            int snatcher = b.battleMemory()["Snatcher"].toInt();
+            if (turn(b,snatcher).value("Snatcher").toBool()) {
+                poke(b,snatcher).remove("ProteanActivated");
+            }
+        }
+    }
+
+    static void bh(int s, int, BS &b) {
+        if (poke(b,s).value("ProteanActivated").toBool()) {
             b.sendAbMessage(107,0,s,0,type(b,s));
+            b.setType(s, type(b,s));
+            poke(b,s).remove("ProteanActivated"); //So only 1 message is displayed
         }
     }
 };
@@ -2385,9 +2424,8 @@ struct AMLevitate : public AM
     }
 
     static void uodr(int s, int t, BS &b) {
-        if (type(b,t) == Type::Ground && b.isFlying(s) && move(b,t) != Move::Sand_Attack) {
+        if (type(b,t) == Type::Ground && b.isFlying(s) && move(b,t) != Move::Sand_Attack && move(b,t) != Move::ThousandArrows) {
             turn(b,s)[QString("Block%1").arg(b.attackCount())] = true;
-
             b.sendAbMessage(120, 0, s);
         }
     }

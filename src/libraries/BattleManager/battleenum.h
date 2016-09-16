@@ -75,7 +75,9 @@ enum /* class */ BattleEnum
     ChooseDraw,
     UseItem,
     ItemCountChange,
-    CappedStat
+    CappedStat,
+    UsePP,
+    ItemChange
 };
 
 inline unsigned int qHash(const BattleEnum &b) {

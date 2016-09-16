@@ -456,7 +456,7 @@ void Player::ipChangeRequested(const QString& ip)
 void Player::spectateBattle(int battleId, const BattleConfiguration &battle)
 {
     battlesSpectated.insert(battleId);
-    relay().spectateBattle(battleId, battle);
+    relay().spectateBattle(battleId, battle, Server::serverIns->name(battle.ids[0]), Server::serverIns->name(battle.ids[1]));
 }
 
 void Player::cancelChallenges()
@@ -878,7 +878,7 @@ void Player::sendChallengeStuff(const ChallengeInfo &c)
 
 void Player::startBattle(int battleid, int id, const TeamBattle &team, const BattleConfiguration &conf, const QString &tier)
 {
-    relay().engageBattle(battleid, this->id(), id, team, conf, tier);
+    relay().engageBattle(battleid, this->id(), id, team, conf, tier, Server::serverIns->name(conf.ids[0]), Server::serverIns->name(conf.ids[1]));
 
     cancelChallenges();
     cancelBattleSearch();
@@ -1121,6 +1121,8 @@ void Player::loggedIn(LoginInfo *info)
     spec().setFlag(SupportsZipCompression, info->data[PlayerFlags::SupportsZipCompression]);
     spec().setFlag(IdsWithMessage, info->data[PlayerFlags::IdsWithMessage]);
     spec().setFlag(ReconnectEnabled, info->network[NetworkServ::LoginCommand::HasReconnect]);
+    spec().setFlag(HasRegisterCheck, info->data[PlayerFlags::HasRegisterCheck]);
+    spec().setFlag(WantsHTML, info->data[PlayerFlags::WantsHTML]);
     state().setFlag(LadderEnabled, info->data[PlayerFlags::LadderEnabled]);
     state().setFlag(Away, info->data[PlayerFlags::Idle]);
     reconnectBits() = info->reconnectBits;
@@ -1370,6 +1372,9 @@ void Player::sendRankings(Player *other)
 
 void Player::ratingsFound()
 {
+    if (tiers.size() < ratings().size()) {
+        removeUnusedRatings();
+    }
     if (ontologin) {
         ontologin = false;
         if (waiting_name.length() > 0 && (waiting_name != name() || !isLoggedIn()))
@@ -1393,7 +1398,12 @@ void Player::sendLoginInfo()
             generateReconnectPass();
         }
     }
-    relay().sendLogin(bundle(), getTierList(), waiting_pass);
+    if (spec()[WantsHTML]) {
+        QSettings s("config", QSettings::IniFormat);
+        relay().sendLogin(bundle(), getTierList(), waiting_pass, s.value("Server/MinimumHTML").toInt());
+    } else {
+        relay().sendLogin(bundle(), getTierList(), waiting_pass);
+    }
 }
 
 static uchar random_character()
@@ -1418,7 +1428,8 @@ QStringList Player::getTierList() const
 
 void Player::assignNewColor(const QColor &c)
 {
-    if (c.lightness() <= 140 && c.green() <= 180)
+    int luma = (c.green()*3 + c.blue() +c.red()*2)/6;
+    if (!((luma > 140 && c.lightness() > 140) || c.green() > 200))
         color() = c;
 }
 
@@ -1463,7 +1474,11 @@ void Player::registerRequest() {
     } while (m.salt.contains('%'));
 
     SecurityManager::updateMember(m);
-    relay().notify(NetworkServ::AskForPass, QString(m.salt));
+    if (spec()[HasRegisterCheck]) {
+        relay().notify(NetworkServ::AskForPass, QString(m.salt), true);
+    } else {
+        relay().notify(NetworkServ::AskForPass, QString(m.salt));
+    }
 }
 
 void Player::userInfoAsked(const QString &name)
@@ -1587,9 +1602,9 @@ void Player::recvTeam(const ChangeTeamInfo &cinfo)
             m_teams.init(*cinfo.teams);
             findTierAndRating(true);
         } else if (cinfo.team && cinfo.teamNum < m_teams.count()) {
+            QString oldTier = team(cinfo.teamNum).tier;
             m_teams.team(cinfo.teamNum) = *cinfo.team;
 
-            QString oldTier = team(cinfo.teamNum).tier;
             findTier(cinfo.teamNum);
 
             if (oldTier != team(cinfo.teamNum).tier) {
@@ -1633,6 +1648,15 @@ void Player::syncTiers(QString oldTier)
 
     if (!tiers.contains(oldTier)) {
         ratings().remove(oldTier);
+    }
+}
+
+void Player::removeUnusedRatings()
+{
+    for (QString tier : ratings().keys()) {
+        if (!tiers.contains(tier)) {
+            ratings().remove(tier);
+        }
     }
 }
 

@@ -50,7 +50,9 @@ namespace PlayerFlags {
         SupportsZipCompression,
         LadderEnabled,
         IdsWithMessage,
-        Idle
+        Idle,
+        HasRegisterCheck,
+        WantsHTML
     };
     enum {
         NoReconnectData,
@@ -89,6 +91,10 @@ public:
 
     bool away() const {
         return flags[Away];
+    }
+
+    bool ladder() const {
+        return flags[LadderEnabled];
     }
 
     void changeState(int state, bool on) {
@@ -156,6 +162,7 @@ public:
 };
 
 DataStream & operator >> (DataStream & in, PersonalTeam & team);
+DataStream & operator << (DataStream & out, const PersonalTeam & team);
 
 /* Only the infos needed by the server */
 struct LoginInfo

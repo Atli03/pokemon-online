@@ -3,12 +3,18 @@
 #include "analyze.h"
 #include "server.h"
 
-RegistryCommunicator::RegistryCommunicator(QObject *parent) :
+RegistryCommunicator::RegistryCommunicator(QString registry_ip, QObject *parent) :
     QObject(parent), registry_connection(nullptr), serverPrivate(true)
 {
+    this->registry_ip = registry_ip;
     Server *server= Server::serverIns;
 
     connect(this, SIGNAL(info(QString)), server, SLOT(printLine(QString)));
+
+    /* Sending Players at regular interval */
+    QTimer *timer = new QTimer(this);
+    connect(timer, SIGNAL(timeout()), this, SLOT(regSendPlayers()));
+    timer->start(2500);
 }
 
 void RegistryCommunicator::connectToRegistry()
@@ -29,7 +35,10 @@ void RegistryCommunicator::connectToRegistry()
     emit info("Connecting to registry...");
 
     QTcpSocket * s = new QTcpSocket(nullptr);
-    s->connectToHost("registry.pokemon-online.eu", 8081);
+    /* Here before connecting, since windows requires it that way */
+    s->setSocketOption(QAbstractSocket::KeepAliveOption, 1);
+    s->connectToHost(registry_ip, 8081);
+    //s->connectToHost("127.0.0.1", 8081);
 
     connect(s, SIGNAL(connected()), this, SLOT(regConnected()));
     connect(s, SIGNAL(error(QAbstractSocket::SocketError)), this, SLOT(regConnectionError()));
@@ -75,13 +84,11 @@ void RegistryCommunicator::regConnected()
     emit info("Connected to registry! Sending server info...");
     Server *server= Server::serverIns;
 
-    registry_connection->notify(NetworkServ::Login, server->serverName, server->serverDesc, quint16(AntiDos::obj()->numberOfDiffIps()), server->serverPlayerMax, server->serverPorts.at(0));
+    registry_connection->notify(NetworkServ::Login, server->serverName, server->serverDesc, quint16(AntiDos::obj()->numberOfDiffIps()), server->serverPlayerMax, server->serverPorts.at(0), server->isPasswordProtected());
     connect(registry_connection, SIGNAL(ipRefused()), SLOT(ipRefused()));
     connect(registry_connection, SIGNAL(invalidName()), SLOT(invalidName()));
     connect(registry_connection, SIGNAL(nameTaken()), SLOT(nameTaken()));
     connect(registry_connection, SIGNAL(accepted()), SLOT(accepted()));
-    /* Sending Players at regular interval */
-    QTimer::singleShot(2500, this, SLOT(regSendPlayers()));
 }
 
 void RegistryCommunicator::regSendPlayers()
@@ -89,9 +96,12 @@ void RegistryCommunicator::regSendPlayers()
     if (!testConnection())
         return;
 
-    registry_connection->notify(NetworkServ::ServNumChange, quint16(AntiDos::obj()->numberOfDiffIps()));
-    /* Sending Players at regular interval */
-    QTimer::singleShot(2500, this, SLOT(regSendPlayers()));
+    static quint16 lastCountSent = -1;
+    quint16 currentCount = quint16(AntiDos::obj()->numberOfDiffIps());
+    if (lastCountSent != currentCount) {
+        registry_connection->notify(NetworkServ::ServNumChange, currentCount);
+        lastCountSent = currentCount;
+    }
 }
 
 void RegistryCommunicator::nameChange(const QString &name)
@@ -115,7 +125,7 @@ void RegistryCommunicator::maxChange(int numMax)
     if (!testConnection())
         return;
 
-    registry_connection->notify(NetworkServ::ServMaxChange,numMax);
+    registry_connection->notify(NetworkServ::ServMaxChange, quint16(numMax));
 }
 
 void RegistryCommunicator::passChange(bool enabled) {

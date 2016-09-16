@@ -84,8 +84,8 @@ public:
     void onAttackFailing(int spot, bool fail) {
         makeEvent("onAttackFailing", spot, fail);
     }
-    void onPlayerMessage(int spot, const QString& message) {
-        makeEvent("onPlayerMessage", spot, message);
+    void onPlayerMessage(int spot, const QString& message, bool end) {
+        makeEvent("onPlayerMessage", spot, message, end);
     }
     void onSpectatorJoin(int id, const QString& name) {
         makeEvent("onSpectatorJoin", id, name);
@@ -187,6 +187,9 @@ public:
     }
     void onTempPPChange(int spot, int move, int PP) {
         makeEvent("onTempPPChange", spot, move, PP);
+    }
+    void onItemChange(int spot, int poke, int item) {
+        makeEvent("onItemChange", spot, poke, item);
     }
     void onMoveChange(int spot, int slot, int move, bool definite) {
         makeEvent("onMoveChange", spot, slot, move, definite);

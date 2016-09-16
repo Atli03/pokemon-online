@@ -296,7 +296,7 @@ void BattleClientLog::onAttackFailing(int, bool silent)
     printLine("Failed", tr("But it failed!"), silent);
 }
 
-void BattleClientLog::onPlayerMessage(int spot, const QString &message)
+void BattleClientLog::onPlayerMessage(int spot, const QString &message, bool)
 {
     //can be 0 for winning/losing message
     if (message.length() == 0)
@@ -401,7 +401,7 @@ void BattleClientLog::onStartWeather(int spot, int weather, bool ability)
     };
 
     if (ability) {
-        printLine("Weather", toColor(tu(weatherAbilityMessage[weather-1]).arg(nick(spot)), c));
+        printLine("Weather", toColor(tu(weatherAbilityMessage[weather-1].arg(nick(spot))), c));
     } else {
         printLine("Weather", toColor(tu(weatherRegularMessage[weather-1]), c));
     }

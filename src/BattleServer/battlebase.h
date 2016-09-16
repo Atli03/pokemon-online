@@ -186,6 +186,8 @@ protected:
     QString winMessage[2];
     QString loseMessage[2];
     QString tieMessage[2];
+    QStringList bannedPokes[2];
+    bool allowIllegal;
 
     /* timers */
     QAtomicInt timeleft[2];
@@ -506,6 +508,8 @@ public:
     virtual bool loseStatMod(int player, int stat, int malus, int attacker, bool tell=true)=0;
     /* Does not do extra operations,just a setter */
     void changeStatMod(int player, int stat, int newstat);
+
+    bool isStadium() const;
 };
 
 #endif // BATTLEBASE_H

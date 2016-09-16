@@ -16,7 +16,7 @@ QString ChallengeInfo::clauseText[] =
     QObject::tr("Challenge Cup"),
     QObject::tr("No Timeout"),
     QObject::tr("Species Clause"),
-    QObject::tr("Wifi Battle"),
+    QObject::tr("Team Preview"),
     QObject::tr("Self-KO Clause"),
     QObject::tr("Inverted Battle")
 };
@@ -128,12 +128,15 @@ void PokeBattle::setNormalStat(int stat, quint16 i)
 void PokeBattle::init(PokePersonal &poke)
 {
     /* Checks num, ability, moves, item */
-    poke.runCheck();
+    poke.runCheck(poke.illegal());
+    illegal() = poke.illegal();
 
     num() = poke.num();
 
-    if (num() == Pokemon::NoPoke)
+    if (num() == Pokemon::NoPoke) {
+        illegal() = false;
         return;
+    }
 
 
     PokeGeneral p;
@@ -141,45 +144,46 @@ void PokeBattle::init(PokePersonal &poke)
     p.num() = poke.num();
     p.load();
 
-    QNickValidator v(NULL, 12);
+    QNickValidator v(NULL, 20);
 
     happiness() = poke.happiness();
 
     item() = poke.item();
     ability() = poke.ability();
 
-    if (item() == Item::GriseousOrb && num() != Pokemon::Giratina_O && p.gen() <= 4) {
-        item() = 0;
-    } else if (num() == Pokemon::Giratina_O && item() != Item::GriseousOrb) {
-        num() = Pokemon::Giratina;
-        ability() = Ability::Pressure;
-    } else if (num() == Pokemon::Giratina && item() == Item::GriseousOrb) {
-        num() = Pokemon::Giratina_O;
-        ability() = Ability::Levitate;
-    }
+    if (!illegal()) {
+        if (item() == Item::GriseousOrb && num() != Pokemon::Giratina_O && p.gen() <= 4) {
+            item() = 0;
+        } else if (num() == Pokemon::Giratina_O && item() != Item::GriseousOrb) {
+            num() = Pokemon::Giratina;
+            ability() = Ability::Pressure;
+        } else if (num() == Pokemon::Giratina && item() == Item::GriseousOrb) {
+            num() = Pokemon::Giratina_O;
+            ability() = Ability::Levitate;
+        }
 
-    if (PokemonInfo::OriginalForme(num()) == Pokemon::Arceus) {
-        if (ItemInfo::isPlate(item())) {
-            num().subnum = ItemInfo::PlateType(item());
-        } else {
+        if (PokemonInfo::OriginalForme(num()) == Pokemon::Arceus) {
+            if (ItemInfo::isPlate(item())) {
+                num().subnum = ItemInfo::PlateType(item());
+            } else {
+                num().subnum = 0;
+            }
+        }
+        if (PokemonInfo::OriginalForme(num()) == Pokemon::Genesect) {
+            num().subnum = ItemInfo::DriveForme(item());
+        }
+
+        if (num() == Pokemon::Keldeo_R && !poke.hasMove(Move::SecretSword)) {
+            if (p.gen() < 6)
+                num() = Pokemon::Keldeo;
+        }
+
+        Pokemon::uniqueId ori = PokemonInfo::OriginalForme(num());
+
+        if ((ori == Pokemon::Castform || ori == Pokemon::Cherrim || ori == Pokemon::Darmanitan || ori == Pokemon::Meloetta || ori == Pokemon::Aegislash) && illegal() == false) {
             num().subnum = 0;
         }
     }
-    if (PokemonInfo::OriginalForme(num()) == Pokemon::Genesect) {
-        num().subnum = ItemInfo::DriveForme(item());
-    }
-
-	if (num() == Pokemon::Keldeo_R && !poke.hasMove(Move::SecretSword)) {
-        if (p.gen() < 6)
-            num() = Pokemon::Keldeo;
-	}
-
-    Pokemon::uniqueId ori = PokemonInfo::OriginalForme(num());
-
-    if (ori == Pokemon::Castform || ori == Pokemon::Cherrim || ori == Pokemon::Darmanitan || ori == Pokemon::Meloetta || ori == Pokemon::Aegislash) {
-        num().subnum = 0;
-    }
-
     nick() = (v.validate(poke.nickname()) == QNickValidator::Acceptable) ? poke.nickname() : PokemonInfo::Name(num());
 
     if (GenderInfo::Possible(poke.gender(), p.genderAvail())) {
@@ -197,7 +201,7 @@ void PokeBattle::init(PokePersonal &poke)
     QSet<int> taken_moves;
     
     for (int i = 0; i < 4; i++) {
-        if (!taken_moves.contains(poke.move(i)) && poke.move(i) != 0) {
+        if (!taken_moves.contains(poke.move(i) || poke.illegal()) && poke.move(i) != 0) {
             taken_moves.insert(poke.move(i));
             move(curs).num() = poke.move(i);
             move(curs).load(poke.gen());
@@ -242,7 +246,7 @@ void PokeBattle::init(PokePersonal &poke)
             //Arceus
             if (PokemonInfo::OriginalForme(num()) == Pokemon::Arceus && evs()[i] > 100 && p.gen() < 5) evs()[i] = 100;
             sum += evs()[i];
-            if (sum > 510) {
+            if (sum > 510 && !poke.illegal()) {
                 evs()[i] -= (sum-510);
                 sum = 510;
             }
@@ -287,7 +291,6 @@ DataStream & operator >> (DataStream &in, PokeBattle &po)
     for (int i = 0; i < 6; i++) {
         in >> po.dvs()[i];
     }
-
     return in;
 }
 
@@ -314,7 +317,6 @@ DataStream & operator << (DataStream &out, const PokeBattle &po)
     for (int i = 0; i < 6; i++) {
         out << po.dvs()[i];
     }
-
     return out;
 }
 
@@ -325,6 +327,7 @@ ShallowBattlePoke::ShallowBattlePoke()
     fullStatus() = 1;
     level() = 100;
     ability() = 0;
+    item() = 0;
 }
 
 ShallowBattlePoke::ShallowBattlePoke(const PokeBattle &p)
@@ -339,6 +342,7 @@ void ShallowBattlePoke::init(const PokeBattle &poke)
     fullStatus() = poke.fullStatus();
     num() = poke.num();
     shiny() = poke.shiny();
+    illegal() = poke.illegal();
     gender() = poke.gender();
     setLifePercent( (poke.lifePoints() * 100) / poke.totalLifePoints() );
     if (lifePercent() == 0 && poke.lifePoints() > 0) {
@@ -467,7 +471,7 @@ bool TeamBattle::invalid() const
     return poke(0).ko() && poke(1).ko() && poke(2).ko() && poke(3).ko() && poke(4).ko() && poke(5).ko();
 }
 
-void TeamBattle::generateRandom(Pokemon::gen gen)
+void TeamBattle::generateRandom(Pokemon::gen gen, bool illegal)
 {
     QList<Pokemon::uniqueId> pokes;
     for (int i = 0; i < 6; i++) {
@@ -489,10 +493,23 @@ void TeamBattle::generateRandom(Pokemon::gen gen)
         g.load();
 
         if (gen >= GEN_MIN_ABILITIES) {
-            p.ability() = g.abilities().ab(true_rand()%3);
-            /* In case the pokemon has less than 3 abilities, ability 1 has 2/3 of being chosen. Fix it. */
-            if (p.ability() == 0)
-                p.ability() = g.abilities().ab(0);
+            p.ability() = 0;
+            if (illegal) {
+                //Wonderguard made to only have 1/4096 chance of being selected. Ruins the fun if its as common as other abilities.
+                int guard = true_rand()%4096;
+                if (guard > 0) {
+                    while (p.ability() == Ability::WonderGuard || p.ability() == Ability::NoAbility) {
+                        p.ability() = true_rand()%(AbilityInfo::NumberOfAbilities(gen) - 1) + 1;
+                    }
+                } else {
+                    p.ability() = Ability::WonderGuard;
+                }
+            } else {
+                /* In case the pokemon has less than 3 abilities, ability 1 has 2/3 of being chosen. So we need to account for this!*/ 
+                while (p.ability() == 0) {
+                    p.ability() = g.abilities().ab(true_rand()%3);
+                }
+            }
         }
 
 
@@ -519,9 +536,14 @@ void TeamBattle::generateRandom(Pokemon::gen gen)
                 p2.setEV(i, 255);
             }
         } else {
-            while (p2.EVSum() < 510) {
+            int total = 510;
+
+            if (illegal) {
+                total = true_rand() % (1530 - 510) + 510; //maybe not the best way to do this
+            }
+            while (p2.EVSum() < total) {
                 int stat = true_rand() % 6;
-                p2.setEV(stat, std::min(int(p2.EV(stat)) + (true_rand()%255), long(255)));
+                p2.setEV(stat, std::min(int(p2.EV(stat)) + (true_rand()%255), long(255)), illegal);
             }
         }
 
@@ -531,6 +553,12 @@ void TeamBattle::generateRandom(Pokemon::gen gen)
         p.evs() << p2.EV(0) << p2.EV(1) << p2.EV(2) << p2.EV(3) << p2.EV(4) << p2.EV(5);
 
         QList<int> moves = g.moves().toList();
+        if (illegal) {
+            QSet<int> allMoves = MoveInfo::Moves(gen);
+            allMoves.remove(Move::NoMove);
+            allMoves.remove(Move::Struggle);
+            moves = allMoves.toList();
+        }
         QList<int> movesTaken;
         int off = false;
         for (int i = 0; i < 4; i++) {
@@ -577,7 +605,7 @@ void TeamBattle::generateRandom(Pokemon::gen gen)
         if (gen >= GEN_MIN_ITEMS)
             p.item() = ItemInfo::Number(ItemInfo::SortedUsefulNames(gen)[true_rand()%ItemInfo::SortedUsefulNames(gen).size()]);
 
-        if (PokemonInfo::OriginalForme(p.num()) == Pokemon::Arceus) {
+        if (PokemonInfo::OriginalForme(p.num()) == Pokemon::Arceus && p.ability() == Ability::Multitype) {
             p.num() = Pokemon::uniqueId(Pokemon::Arceus, ItemInfo::PlateType(p.item()));
         }
         if (PokemonInfo::OriginalForme(p.num()) == Pokemon::Genesect) {
@@ -678,6 +706,9 @@ void ShallowShownPoke::init(const PokeBattle &b)
     if (PokemonInfo::OriginalForme(num) == Pokemon::Arceus) {
         num = Pokemon::Arceus;
     }
+    if (PokemonInfo::OriginalForme(num) == Pokemon::Genesect) {
+        num = Pokemon::Genesect;
+    }
 }
 
 DataStream & operator >> (DataStream &in, ShallowShownPoke &po) {
@@ -771,6 +802,7 @@ FullBattleConfiguration::FullBattleConfiguration(int battleid, int p1, int p2, c
     this->flags.setFlag(Rated, c.rated);
     this->mode = c.mode;
     this->finished() = false;
+    this->gen = c.gen;
 }
 
 bool FullBattleConfiguration::acceptSpectator(int player, bool authed) const
@@ -1000,12 +1032,12 @@ DataStream & operator << (DataStream &out, const ChallengeInfo & c) {
 }
 
 DataStream & operator >> (DataStream &in, BattlePlayer & c) {
-    in >> c.id >> c.name >> c.avatar >> c.rating >> c.win >> c.lose >> c.tie >> c.restrictedCount >> c.restrictedPokes >> c.teamCount >> c.maxlevel;
+    in >> c.id >> c.name >> c.avatar >> c.rating >> c.win >> c.lose >> c.tie >> c.restrictedCount >> c.restrictedPokes >> c.teamCount >> c.maxlevel >> c.bannedPokes >> c.allowIllegal;
     return in;
 }
 
 DataStream & operator << (DataStream &out, const BattlePlayer & c) {
-    out << c.id << c.name << c.avatar << c.rating << c.win << c.lose << c.tie << c.restrictedCount << c.restrictedPokes << c.teamCount << c.maxlevel;
+    out << c.id << c.name << c.avatar << c.rating << c.win << c.lose << c.tie << c.restrictedCount << c.restrictedPokes << c.teamCount << c.maxlevel << c.bannedPokes << c.allowIllegal;
     return out;
 }
 

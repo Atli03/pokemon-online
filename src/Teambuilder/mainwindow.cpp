@@ -76,6 +76,7 @@ static void setDefaultValues()
     setDefaultValue(s, "Client/SortChannelsByName", true);
     setDefaultValue(s, "Client/ShowTimestamps", true);
     setDefaultValue(s, "Client/DisplayTIs", true);
+    setDefaultValue(s, "Client/ShowExitWarning", true);
     setDefaultValue(s, "PlayerEvents/ShowIdle", false);
     setDefaultValue(s, "PlayerEvents/ShowBattle", false);
     setDefaultValue(s, "PlayerEvents/ShowChannel", false);
@@ -90,6 +91,7 @@ static void setDefaultValues()
     setDefaultValue(s, "Mods/CurrentMod", QString());
     setDefaultValue(s, "TeamBuilder/ShowAllItems", false);
     setDefaultValue(s, "animated_sprites", false);
+    setDefaultValue(s, "Battle/AlwaysOnTop", false);
 }
 
 MainEngine::MainEngine(bool updated) : displayer(0), freespot(0)
@@ -154,7 +156,8 @@ MainEngine::MainEngine(bool updated) : displayer(0), freespot(0)
 #endif
 
     //launchMenu(true);
-    displayer = new QMainWindow();
+    displayer = new QMainWindowPO();
+    displayer->setWarningSetting(s.value("Client/ShowExitWarning").toBool());
 #ifdef Q_OS_MACX
     MacSupport::setupFullScreen(displayer);
 #endif
@@ -252,7 +255,9 @@ QMenuBar *MainEngine::transformMenuBar(QMenuBar *param)
         QMenu *m = param->addMenu(tr("Plugins"));
         m->addAction(tr("Plugin Manager"), this, SLOT(openPluginManager()));
         m->addSeparator();
-
+        if (pluginManager == NULL) {
+            pluginManager = new ClientPluginManager(this);
+        }
         foreach(QString plugin, pluginManager->getVisiblePlugins()) {
             m->addAction(plugin, this, SLOT(openPluginConfiguration()));
         }
@@ -522,6 +527,7 @@ void MainEngine::goOnline(const QString &url, const quint16 port, const QString&
     connect(client, SIGNAL(done()), SLOT(launchServerChoice()));
     connect(client, SIGNAL(titleChanged()), main, SLOT(updateTabNames()));
     connect(client, SIGNAL(pmNotificationsChanged(bool)), SLOT(pmNotificationsChanged(bool)));
+    connect(client, SIGNAL(exitWarningChanged(bool)), SLOT(exitWarningChanged(bool)));
 }
 
 void MainEngine::updateMenuBar()
@@ -703,4 +709,7 @@ void MainEngine::reloadThemes()
     rebuildThemeMenu();
 }
 
+void MainEngine::exitWarningChanged(bool warn) {
+    displayer->setWarningSetting(warn);
+}
 

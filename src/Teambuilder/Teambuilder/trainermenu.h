@@ -31,6 +31,7 @@ public slots:
     void importAndroidTeam(const QString &team);
     void openImportAndroidDialog();
     void openAvatarDialog();
+    void openDamageCalc();
     void openTeam();
 
 signals:
@@ -57,7 +58,6 @@ private slots:
     void on_saveTeam_clicked();
     void on_loadTeam_clicked();
     void on_importTeam_clicked();
-    void on_importAndroidTeam_clicked();
     void on_teamFolderButton_clicked();
     void on_profileList_currentIndexChanged(int);
     void on_newProfile_clicked();
@@ -71,6 +71,7 @@ private:
     void setColor();
     void loadProfileList();
     void updateButtonName();
+    void on_importAndroidTeam_clicked();
 
     Ui::TrainerMenu *ui;
     QPushButton *teamButtons[6];

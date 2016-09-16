@@ -102,6 +102,11 @@ public:
         team(player).poke(poke)->setAbility(newAbility);
     }
 
+    void onItemChange(int player, int poke, int newItem)
+    {
+        team(player).poke(poke)->setItem(newItem);
+    }
+
     void onShiftSpots(int player, int spot1, int spot2, bool)
     {
         d()->field()->shiftSpots(spot(player, spot1), spot(player, spot2));
@@ -154,6 +159,7 @@ public:
     bool isPlayer(int spot) const { return role(spot) == BattleConfiguration::Player;}
     int numberOfSlots() const {return conf->numberOfSlots();}
     bool multiples() const {return (conf->mode != ChallengeInfo::Singles);}
+    bool doubles() const {return (conf->mode == ChallengeInfo::Doubles); }
 
     void reloadTeam(int player) {
         d()->reloadTeam(player);

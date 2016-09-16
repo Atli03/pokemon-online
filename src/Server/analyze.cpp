@@ -31,7 +31,7 @@ void Analyzer::sendMessage(const QString &message, bool html)
     notify(SendChatMessage, Flags(0), Flags(html==true), message);
 }
 
-void Analyzer::engageBattle(int battleid, int myid, int id, const TeamBattle &team, const BattleConfiguration &conf, const QString &tier)
+void Analyzer::engageBattle(int battleid, int myid, int id, const TeamBattle &team, const BattleConfiguration &conf, const QString &tier, const QString &name1, const QString &name2)
 {
     QByteArray tosend;
     DataStream out(&tosend, QIODevice::WriteOnly, version.version);
@@ -53,10 +53,13 @@ void Analyzer::engageBattle(int battleid, int myid, int id, const TeamBattle &te
     if (!team.items.empty()) {
         out << team.items;
     }
+
+    out << name1 << name2;
+
     emit sendCommand(tosend);
 }
 
-void Analyzer::spectateBattle(int battleid, const BattleConfiguration &conf)
+void Analyzer::spectateBattle(int battleid, const BattleConfiguration &conf, const QString &name1, const QString &name2)
 {
     if (version < ProtocolVersion(1,0)) {
         QByteArray tosend;
@@ -65,9 +68,11 @@ void Analyzer::spectateBattle(int battleid, const BattleConfiguration &conf)
         out << uchar(SpectateBattle) << Flags(1) << qint32(battleid);
         conf.oldSerialize(out);
 
+        out << name1 << name2;
+
         emit sendCommand(tosend);
     } else {
-        notify(SpectateBattle, Flags(1), qint32(battleid), conf);
+        notify(SpectateBattle, Flags(1), qint32(battleid), conf, name1, name2);
     }
 }
 
@@ -86,15 +91,20 @@ void Analyzer::sendPM(int dest, const QString &mess)
     notify(SendPM, qint32(dest), mess);
 }
 
-void Analyzer::sendLogin(const PlayerInfo &p, const QStringList &tiers, const QByteArray &reconnectPass)
+void Analyzer::sendLogin(const PlayerInfo &p, const QStringList &tiers, const QByteArray &reconnectPass, int minHTML)
 {
     QByteArray tosend;
     DataStream out(&tosend, QIODevice::WriteOnly);
-
-    out << uchar(Login) << Flags((!reconnectPass.isEmpty()) << LoginCommand::HasReconnectPass);
+    Flags flag;
+    flag.setFlag(0, !reconnectPass.isEmpty());
+    flag.setFlag(1, minHTML > -1);
+    out << uchar(Login) << flag;
 
     if (!reconnectPass.isEmpty()) {
         out << reconnectPass;
+    }
+    if (minHTML > -1) {
+        out << minHTML;
     }
 
     out << p << tiers;
@@ -457,8 +467,9 @@ void Analyzer::dealWithCommand(const QByteArray &commandline)
             QString tier;
             while (!in.atEnd()) {
                 in >> team >> tier;
+                emit tierChanged(team, tier);
             }
-            emit tierChanged(team, tier);
+
             break;
         }
     case FindBattle:

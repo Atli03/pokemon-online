@@ -39,6 +39,7 @@ public:
         All = 0,
         SupportsZip = 1,
         IdsWithMessage = 2,
+        WantsHTML = 3,
         LastGroup
     };
     enum {
@@ -53,6 +54,7 @@ public:
 
     void start();
     void initBattles();
+    void initRelayStation();
 
     static void print(const QString &line);
 
@@ -112,6 +114,8 @@ public:
 
     bool correctPass(const QByteArray &hash, const QByteArray &salt) const;
     void processLoginDetails(Player *p);
+
+    void scriptKillBattleServer();
 signals:
     void chatMessage(const QString &name);
     void serverMessage(const QString &name);
@@ -145,6 +149,7 @@ public slots:
     void serverPasswordChanged(const QString &pass);
     void usePasswordChanged(bool usePass);
     void changeDbMod(const QString &mod);
+    void minHtmlChanged(int auth);
 
     /* means a new connection is about to start from the TCP server */
     /* i is the number of the listening port */
@@ -225,6 +230,7 @@ private:
     bool overactiveShow;
     bool passwordProtected;
     QByteArray serverPassword;
+    int minimumHtml;
 
     quint16 numPlayers() {
         return myplayers.size();
