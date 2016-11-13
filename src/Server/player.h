@@ -39,6 +39,7 @@ class Player : public QObject, public PlayerInterface
     PROPERTY(quint8, reconnectBits)
     PROPERTY(QString, os)
     PROPERTY(LoginInfo*, loginInfo)
+    PROPERTY(int, lastBattle)
 public:
     enum State
     {
@@ -239,6 +240,7 @@ public slots:
     void spectatingChat(int id, const QString &chat);
     void quitSpectating(int id);
     void ladderChange(bool);
+    void sendInvalidTier(quint8 team, const QString &);
     void changeTier(quint8 team, const QString&);
     void findBattle(const FindBattleData&);
     void getRankingsByPage(const QString &tier, int page);

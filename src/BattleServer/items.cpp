@@ -139,7 +139,13 @@ struct IMStatModifier : public IM
 
     static void sm(int s, int, BS &b) {
         QString args = poke(b,s)["ItemArg"].toString();
-        turn(b,s)["Stat" + args.left(1) + "ItemModifier"] = args.mid(2).toInt();
+        //Wonder Room changes Assault Vest from SpDef to Def
+        if (b.poke(s).item() == Item::AssaultVest && b.battleMemory().value("WonderRoomCount").toInt() > 0) {
+            int stat = 6 - args.left(1).toInt();
+            turn(b,s)[QString("Stat%0ItemModifier").arg(stat)] = args.mid(2).toInt();
+        } else {
+            turn(b,s)["Stat" + args.left(1) + "ItemModifier"] = args.mid(2).toInt();
+        }
     }
 };
 
@@ -205,6 +211,7 @@ struct IMLagging : public IM
     }
 };
 
+/* Light Ball, Thick Club, DeepSeaTooth/Scale */
 struct IMBoostPokeStat : public IM
 {
     IMBoostPokeStat() {
@@ -231,6 +238,7 @@ struct IMBoostPokeStat : public IM
     }
 };
 
+/* Wise Glasses, Muscle Band */
 struct IMBoostCategory : public IM
 {
     IMBoostCategory() {
@@ -238,7 +246,11 @@ struct IMBoostCategory : public IM
     }
     static void bpm(int s, int, BS &b) {
         if (tmove(b,s).category == poke(b,s)["ItemArg"]) {
-            b.chainBp(s, 409);
+            if (b.gen() < 5) {
+                b.chainBp(s, 2);
+            } else {
+                b.chainBp(s, 0x1199);
+            }
         }
     }
 };
@@ -256,10 +268,11 @@ struct IMBoostType : public IM
             return;
         }
         if (tmove(b,s).type == poke(b,s)["ItemArg"]) {
-            if (b.gen() >= 4)
-                b.chainBp(s, 819);
-            else
-                b.chainBp(s, 409);
+            if (b.gen() < 5) {
+                b.chainBp(s, 4);
+            } else {
+                b.chainBp(s, 0x1333);
+            }
         }
     }
 
@@ -278,7 +291,11 @@ struct IMZoomLens : public IM
 
     static void sm(int s, int t, BS &b) {
         if (fturn(b,t).contains(TM::HasMoved)) {
-            turn(b,s)["Stat6ItemModifier"] = 4;
+            if (b.gen() < 5) {
+                turn(b,s)["Stat6ItemModifier"] = 4;
+            } else {
+                turn(b,s)["Stat6ItemModifier"] = 4; //0x1333
+            }
         }
     }
 };
@@ -315,7 +332,11 @@ struct IMLifeOrb : public IM
     }
 
     static void m2m(int s, int, BS &b) {
-        turn(b,s)["ItemMod2Modifier"] = 3;
+        if (b.gen() < 5) {
+            turn(b,s)["ItemMod2Modifier"] = 6;
+        } else {
+            turn(b,s)["ItemMod2Modifier"] = 0x14CC;
+        }
     }
 
     static void udi(int s, int t, BS &b) {
@@ -395,12 +416,22 @@ struct IMCriticalPoke : public IM
     }
 
     static void btl(int s, int, BS &b) {
-        if (b.pokenum(s).pokenum == poke(b,s)["ItemArg"].toInt()) {
+        int num = b.pokenum(s).pokenum;
+        //Hackmons transforming should retain their boost
+        if (poke(b,s).contains("PreTransformPoke")) {
+            int num2 = PokemonInfo::Number(poke(b,s).value("PreTransformPoke").toString()).pokenum;
+            //But not Ditto!
+            if (num2 != Pokemon::Ditto) {
+                num = num2;
+            }
+        }
+        if (num == poke(b,s)["ItemArg"].toInt()) {
             tmove(b,s).critRaise += 2;
         }
     }
 };
 
+/* Adamant/Lustrous/Griseous Orb */
 struct IMPokeTypeBoost : public IM
 {
     IMPokeTypeBoost() {
@@ -416,8 +447,13 @@ struct IMPokeTypeBoost : public IM
 
         int type = tmove(b, s).type;
         for (int i = 1; i < args.size(); i++) {
-            if (type == args[i].toInt())
-                b.chainBp(s, 819);
+            if (type == args[i].toInt()) {
+                if (b.gen() < 5) {
+                    b.chainBp(s, 4);
+                } else {
+                    b.chainBp(s, 0x1333);
+                }
+            }
         }
     }
 };
@@ -458,26 +494,25 @@ struct IMMetronome : public IM
             /* multiple turn move */
             return;
         }
-        int count = poke(b,s)["IMMetroCount"].toInt();
         int lslot = poke(b,s)["IMLastMoveSlot"].toInt();
         int slot = fpoke(b,s).lastMoveSlot;
-        bool act = poke(b,s)["IMMetroActivating"].toBool();
         poke(b,s)["IMLastMoveSlot"] = slot;
-        poke(b,s)["IMMetroActivating"] = true;
-        if (slot != lslot) {
-            poke(b,s)["IMMetroCount"] = 0;
+        if (slot != lslot || tmove(b,s).power == 0) {
+            poke(b,s)["IMMetroCount"] = 1;
             return;
         }
-        if (tmove(b,s).power == 0) {
-            return;
-        }
-        if (act) {
-            poke(b,s)["IMMetroCount"] = std::min(10, count+(b.gen() >= 5 ? 2 : 1));
+
+        int count = poke(b,s).value("IMMetroCount").toInt() + 1;
+        poke(b,s)["IMMetroCount"] = count;
+        if (b.gen() < 5) {
+            poke(b,s)["IMMetroMod"] = std::min(20, count * 2);
+        } else {
+            poke(b,s)["IMMetroMod"] = std::min(0x2000, 0x1000 + count * 0x333);
         }
     }
 
     static void m2m(int s, int, BS &b) {
-        turn(b,s)["ItemMod2Modifier"] = poke(b,s)["IMMetroCount"];
+        turn(b,s)["ItemMod2Modifier"] = poke(b,s)["IMMetroMod"];
     }
 };
 
@@ -612,9 +647,14 @@ struct IMEviolite : public IM
         if (poke(b,s).contains("PreTransformPoke")) {
             id = PokemonInfo::Number(poke(b,s).value("PreTransformPoke").toString());
         }
-        if (PokemonInfo::HasEvolutions(id.pokenum) && id != Pokemon::Floette_EF) {
-            turn(b,s)["Stat2ItemModifier"] = 10;
-            turn(b,s)["Stat4ItemModifier"] = 10;
+        if (PokemonInfo::HasEvolutions(id.pokenum) && id != Pokemon::Floette_Eternal) {
+            if (b.gen() < 5) {
+                turn(b,s)["Stat2ItemModifier"] = 10;
+                turn(b,s)["Stat4ItemModifier"] = 10;
+            } else {
+                turn(b,s)["Stat2ItemModifier"] = 0x1800;
+                turn(b,s)["Stat4ItemModifier"] = 0x1800;
+            }
         }
     }
 };
@@ -731,7 +771,7 @@ struct IMRedCard : public IM
         int s = turn(b,t)["RedCardUser"].toInt();
         if (b.koed(s) || b.koed(t) || turn(b,t)["RedCardGiverCount"] != slot(b,s)["SwitchCount"])
             return;
-        if (!b.hasWorkingItem(s, Item::RedCard) && turn(b,s).value("LostItem") != Item::RedCard)
+        if (!b.hasWorkingItem(s, Item::RedCard))
             return;
 
         int target = b.player(t);
@@ -777,6 +817,9 @@ struct IMEscapeButton : public IM
         //Prevent button from activating when dead, behind a sub, opponent has Sheer Force, or during a switch where pursuit is used
         if (b.koed(s) || turn(b,t).value("EncourageBug").toBool() || (b.hasSubstitute(s) && !b.canBypassSub(t)) || turn(b,s).value("SendingBack").toBool())
             return;
+        if (b.countAlive(b.player(s)) <= 1) // Button doesn't activate when target is the last pokemon
+            return;
+            
         turn(b,s)["EscapeButtonActivated"] = true;
         turn(b,s)["EscapeButtonCount"] = slot(b,s)["SwitchCount"];
 
@@ -788,7 +831,7 @@ struct IMEscapeButton : public IM
 
         for (unsigned i = 0; i < speeds.size(); i++) {
             int p = speeds[i];
-            if (!b.hasWorkingItem(p, Item::EscapeButton) && turn(b,p).value("LostItem") != Item::EscapeButton)
+            if (!b.hasWorkingItem(p, Item::EscapeButton))
                 continue;
             if (!turn(b,p).contains("EscapeButtonActivated"))
                 continue;
@@ -1075,6 +1118,10 @@ struct IMPrimalOrb : public IM {
     }
     static void us(int s, int, BS &b) {
         if (ItemInfo::MegaStoneForme(b.poke(s).item()).original() == b.poke(s).num()) {
+            //The game is hardcoded to not activate Groudon or Kyogre's natural ability before a mega evolution. It does, however, activate other abilities.
+            if(!(b.poke(s).num() == Pokemon::Groudon && b.poke(s).ability() == Ability::Drought) && !(b.poke(s).num() == Pokemon::Kyogre && b.poke(s).ability() == Ability::Drizzle)) {
+                b.acquireAbility(s, b.poke(s).ability(), true);
+            }
             b.sendItemMessage(67, s);
             b.changeForme(b.player(s), b.slotNum(s), ItemInfo::MegaStoneForme(b.poke(s).item()), false, false, true);
             turn(b,s)["PrimalForme"] = true;

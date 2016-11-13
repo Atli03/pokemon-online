@@ -19,7 +19,6 @@
 #include "teambuilderwidget.h"
 #include "teambuilder.h"
 
-bool PokeEdit::advancedWindowClosed = false;
 bool PokeEdit::hackMons = false;
 PokeEdit::PokeEdit(TeamBuilderWidget *master, PokeTeam *poke, QAbstractItemModel *pokeModel, QAbstractItemModel *itemsModel, QAbstractItemModel *natureModel) :
     ui(new Ui::PokeEdit),
@@ -41,21 +40,11 @@ PokeEdit::PokeEdit(TeamBuilderWidget *master, PokeTeam *poke, QAbstractItemModel
         master->getDock(LevelDock)->setWidget(ui->levelSettings);
         master->getDock(MoveDock)->setWidget(ui->moveContainer);
     } else {
-        QCloseDockWidget *hi = new QCloseDockWidget(tr("Advanced"), this);
-        hi->setObjectName("AdvancedTab");
+        QCloseDockWidget *hi = new QCloseDockWidget();
+        hi->setObjectName("IvBox");
         hi->setWidget(ui->ivbox);
-        hi->setFeatures(QDockWidget::DockWidgetClosable|QDockWidget::DockWidgetMovable);
+        hi->setFeatures(QDockWidget::DockWidgetMovable);
         ui->horizontalMove->addWidget(hi);
-
-        if (advancedWindowClosed) {
-            hi->close();
-        }
-
-        connect(hi, SIGNAL(closed()), SIGNAL(closeAdvanced()));
-//        QDockWidget *hi2 = new QDockWidget(tr("Level"), this);
-//        hi2->setWidget(ui->levelSettings);
-//        hi2->setFeatures(QDockWidget::DockWidgetClosable|QDockWidget::DockWidgetMovable);
-//        ui->horizontalPoke->addWidget(hi2);
     }
 
     QSortFilterProxyModel *pokeFilter = new QSortFilterProxyModel(this);
@@ -86,6 +75,7 @@ PokeEdit::PokeEdit(TeamBuilderWidget *master, PokeTeam *poke, QAbstractItemModel
     connect(ui->item, SIGNAL(currentIndexChanged(QString)), this, SLOT(changeItem(QString)));
     connect(ui->evbox, SIGNAL(natureChanged(int)), this, SLOT(setNature(int)));
     connect(ui->evbox, SIGNAL(natureBoostChanged()), ui->ivbox, SLOT(updateStats()));
+    connect(ui->evbox, SIGNAL(EVsChanged()), ui->ivbox, SLOT(updateStats()));
     connect(ui->ivbox, SIGNAL(statsUpdated()), ui->evbox, SLOT(updateEVs()));
 
     updateAll();
@@ -139,16 +129,6 @@ void PokeEdit::fillMoves()
         connect(m_moves[i], SIGNAL(returnPressed()), SLOT(changeMove()));
         connect(m_moves[i], SIGNAL(editingFinished()), SLOT(changeMove()));
     }
-}
-
-void PokeEdit::closeAdvancedTab()
-{
-    findChild<QWidget*>("AdvancedTab")->close();
-}
-
-void PokeEdit::showAdvancedTab()
-{
-    findChild<QWidget*>("AdvancedTab")->show();
 }
 
 void PokeEdit::toggleHackmons()
@@ -248,8 +228,8 @@ void PokeEdit::moveEntered(const QModelIndex &index)
 {
     int num = index.data(CustomModel::MovenumRole).toInt();
 
-    if (num == Move::SecretSword && poke().num() == Pokemon::Keldeo && PokemonInfo::Released(Pokemon::Keldeo_R, poke().gen())) {
-        setNum(Pokemon::Keldeo_R);
+    if (num == Move::SecretSword && poke().num() == Pokemon::Keldeo && PokemonInfo::Released(Pokemon::Keldeo_Resolute, poke().gen())) {
+        setNum(Pokemon::Keldeo_Resolute);
         return;
     }
 
@@ -410,18 +390,17 @@ void PokeEdit::setNum(Pokemon::uniqueId num)
 
     if (!PokeEdit::hackMons) {
         if (num.pokenum == Pokemon::Keldeo) {
-            if (num == Pokemon::Keldeo_R && !poke().hasMove(Move::SecretSword)) {
+            if (num == Pokemon::Keldeo_Resolute && !poke().hasMove(Move::SecretSword)) {
                 try {
                     poke().addMove(Move::SecretSword);
                 } catch(const QString &) {
                     poke().setMove(Move::SecretSword, 0, false);
                 }
-            } else if (PokemonInfo::Released(Pokemon::Keldeo_R, poke().gen())) {
-                if (poke().gen() < 6)
-                    poke().removeMove(Move::SecretSword);
+            } else if (PokemonInfo::Released(Pokemon::Keldeo_Resolute, poke().gen())) {
+                poke().removeMove(Move::SecretSword);
             }
         } else if (num.pokenum == Pokemon::Giratina) {
-            if (num == Pokemon::Giratina_O && poke().item() != Item::GriseousOrb) {
+            if (num == Pokemon::Giratina_Origin && poke().item() != Item::GriseousOrb) {
                 poke().item() = Item::GriseousOrb;
             } else if (num == Pokemon::Giratina && poke().item() == Item::GriseousOrb) {
                 poke().item() = Item::NoItem;
@@ -470,9 +449,9 @@ void PokeEdit::changeItem(const QString &itemName)
     int itemNum = ItemInfo::Number(itemName);
     poke().item() = itemNum;
     if (!PokeEdit::hackMons) {
-        if (poke().num() == Pokemon::Giratina && itemNum == Item::GriseousOrb && PokemonInfo::Released(Pokemon::Giratina_O, poke().gen())) {
-            setNum(Pokemon::Giratina_O);
-        } else if (poke().num() == Pokemon::Giratina_O && itemNum != Item::GriseousOrb) {
+        if (poke().num() == Pokemon::Giratina && itemNum == Item::GriseousOrb && PokemonInfo::Released(Pokemon::Giratina_Origin, poke().gen())) {
+            setNum(Pokemon::Giratina_Origin);
+        } else if (poke().num() == Pokemon::Giratina_Origin && itemNum != Item::GriseousOrb) {
             setNum(Pokemon::Giratina);
         } else if (itemNum == Item::GriseousOrb && poke().gen() <= 4 && poke().num().pokenum != Pokemon::Giratina) {
             poke().item() = 0;

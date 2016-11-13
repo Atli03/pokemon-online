@@ -83,6 +83,7 @@ public:
     bool canPassMStone(int target, int item);
     bool preTransPoke(int s, Pokemon::uniqueId check);
     bool canMegaEvolve(int slot);
+    int intendedMoveSlot(int s, int slot, int mv);
     void inflictStatus(int player, int Status, int inflicter, int minturns = 0, int maxturns = 0);
     void inflictConfused(int player, int source, bool tell=true);
     void inflictRecoil(int source, int target);
@@ -108,6 +109,9 @@ public:
     void makePokemonNext(int player);
     void makePokemonLast(int player);
 
+    int chainMod(int mod1, int mod2); //gen 5+
+    int applyMod(int num, int mod); //gen 5+
+    int floorMod(int num); //gen 3 + 4
     int calculateDamage(int player, int target);
     void applyMoveStatMods(int player, int target);
     bool testAccuracy(int player, int target, bool silent = false);
@@ -116,7 +120,7 @@ public:
     bool testStatus(int player);
     void fail(int player, int move, int part=0, int type=0, int trueSource = -1);
     bool hasWorkingAbility(int play, int ability);
-    bool hasWorkingTeamAbility(int play, int ability);
+    bool hasWorkingTeamAbility(int play, int ability, int excludedSlot = -1);
     bool opponentsHaveWorkingAbility(int play, int ability);
     void acquireAbility(int play, int ability, bool firstTime=false);
     int ability(int player);
@@ -290,6 +294,7 @@ private:
     QHash<priorityBracket, int> bracketType;
     QHash<priorityBracket, QString> bracketToEffect;
     QVector<int> bpmodifiers;
+    QVector<int> atkmodifiers;
 
     void getVectorRef(priorityBracket b);
 
@@ -308,7 +313,10 @@ public:
                             MechanicsFunction f=NULL,IntFunction f2 = NULL);
     void removeEndTurnEffect(EffectType type, int slot, const QString &effect);
 
-    void chainBp(int p, int pow);
+    void chainBp(int p, int mod);
+    void chainAtk(int p, int mod);
+    void clearBp();
+    void clearAtk();
 
     context &battleMemory() {
         return battlelong;

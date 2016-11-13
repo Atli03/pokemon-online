@@ -187,6 +187,7 @@ public slots:
     void playerLogin(const PlayerInfo &p, const QStringList &tiers, bool ignore=false);
     void playerReceived(const PlayerInfo &p);
     void announcementReceived(const QString &);
+    void toggleAnnouncementOption(bool hide);
     void tiersReceived(const QStringList &tiers);
     void playerLogout(int);
     void sendRegister();
@@ -380,7 +381,7 @@ private:
     /* Button to exit */
     QPushButton *myexit;
     /* Button to send text */
-    QPushButton *mysender;
+    QPushButton *openteambuilder;
     /* Button to register a password */
     QPushButton *myregister;
     /* Button to find a battle */

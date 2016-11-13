@@ -335,7 +335,8 @@ void BattleClientLog::onMoveMessage(int spot, int move, int part, int type, int 
     mess.replace("%q", q);
     mess.replace("%i", ItemInfo::Name(other));
     mess.replace("%a", AbilityInfo::Name(other));
-    mess.replace("%p", PokemonInfo::Name(other));
+    mess.replace("%p", PokemonInfo::Name(other)); //for Transform
+    mess.replace("%e", PokemonInfo::Name(data()->poke(foe).num())); // for "... was dragged out" message
     printHtml("MoveMessage", toColor(escapeHtml(tu(mess)), theme()->typeColor(type)));
 }
 
@@ -581,6 +582,11 @@ void BattleClientLog::onRearrangeTeam(int, const ShallowShownTeam &team)
     printHtml("Teams", toBoldColor(tr("Your team: "), Qt::blue) + mynames.join(" / "));
     printHtml("Teams", toBoldColor(tr("Opponent's team: "), Qt::blue) + oppnames.join(" / "));
     onBlankMessage();
+}
+
+void BattleClientLog::onPrintRule(const QString &rule, const QString &value)
+{
+    printHtml("CustomRule", toBoldColor(rule + ": ", Qt::blue) + value);
 }
 
 void BattleClientLog::onPrintHtml(const QString &data)

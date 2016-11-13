@@ -680,9 +680,9 @@ void BattleBase::endBattle(int result, int winner, int loser)
         if (!tieMessage[Player2].isEmpty()) {
             notify(All, EndMessage, Player2, tieMessage[Player2]);
         }
+        callp(BP::battleEnded);
         exit();
-    }
-    if (result == Win || result == Forfeit) {
+    } else if (result == Win || result == Forfeit) {
         notify(All, BattleEnd, winner, qint8(result));
         if (!winMessage[winner].isEmpty()) {
             notify(All, EndMessage, winner, winMessage[winner]);
@@ -692,6 +692,7 @@ void BattleBase::endBattle(int result, int winner, int loser)
         }
 
         emit battleFinished(publicId(), result, id(winner), id(loser));
+        callp(BP::battleEnded);
         exit();
     }
 }
@@ -854,8 +855,12 @@ void BattleBase::playerForfeit(int forfeiterId)
     if (finished()) {
         return;
     }
+
     forfeiter() = spot(forfeiterId);
-    notify(All, BattleEnd, opponent(forfeiter()), qint8(Forfeit));
+    stopClock(opponent(forfeiter()));
+    //Already done by the server itself
+    /*notify(All, BattleEnd, opponent(forfeiter()), qint8(Forfeit));*/
+    callp(BP::battleEnded);
 }
 
 
@@ -1215,6 +1220,11 @@ void BattleBase::spectatingChat(int id, const QString &str)
     notify(All, SpectatorChat, id, qint32(id), str);
 }
 
+void BattleBase::sendMessage(int id, const QString &type, const QString &content)
+{
+    notify(id, Notice, id, type, content);
+}
+
 void BattleBase::sendMoveMessage(int move, int part, int src, int type, int foe, int other, const QString &q)
 {
     if (foe == -1) {
@@ -1453,15 +1463,6 @@ void BattleBase::BasicPokeInfo::init(const PokeBattle &p, Pokemon::gen gen)
     level = p.level();
     substituteLife = 0;
     lastMoveUsed = 0;
-
-    if (gen <= 1) {
-        if (p.status() == Pokemon::Paralysed) {
-            stats[Speed] /= 4;
-        } else if (p.status() == Pokemon::Burnt) {
-            /* Burn reduction is at attack time */
-            //stats[Attack] /= 2;
-        }
-    }
 }
 
 void BattleBase::BasicMoveInfo::reset()
@@ -2044,28 +2045,47 @@ int BattleBase::repeatNum(int player)
 
 void BattleBase::testCritical(int player, int target)
 {
-    (void) target;
-
-    /* In RBY, Focus Energy reduces crit by 75%; in statium, it's * 4 */
-    int up (1), down(1);
-    if (tmove(player).critRaise & 1) {
-        up *= 8;
-    }
-    if (tmove(player).critRaise & 2) {
-        if (gen() == Gen::RedBlue || gen() == Gen::Yellow) {
-            down = 4;
-        } else {
-            up *= 4;
-        }
-    }
-    PokeFraction critChance(up, down);
-    int randnum = randint(512);
     int baseSpeed = PokemonInfo::BaseStats(fpoke(player).id, gen()).baseSpeed();
     //Transformed Pokemon use the original form's base speed.
     if (pokeMemory(slot(player)).contains("PreTransformPoke")) {
         baseSpeed = PokemonInfo::BaseStats(PokemonInfo::Number(pokeMemory(slot(player)).value("PreTransformPoke").toString()), gen()).baseSpeed();;
     }
-    bool critical = randnum < std::min(510, baseSpeed * critChance);
+
+    bool critical = false;
+    (void) target;
+
+    if (!isStadium()) {
+        // In RBY, Focus Energy reduces crit by 75%
+        int up (1), down(1);
+        if (tmove(player).critRaise & 1) {
+            up *= 8;
+        }
+        if (tmove(player).critRaise & 2) {
+            if (gen() == Gen::RedBlue || gen() == Gen::Yellow) {
+                down = 4;
+            } else {
+                up *= 4;
+            }
+        }
+
+        PokeFraction critChance(up, down);
+        int randnum = randint(512);
+        critical = randnum < std::min(510, baseSpeed * critChance);
+    }
+    else {
+        int ch = (baseSpeed + 76) >> 2;
+
+        if (tmove(player).critRaise & 2) // Focus Energy
+            ch = (ch << 2) + 160;
+        else ch = ch << 1;
+
+        if (tmove(player).critRaise & 1) // Move with high crit ratio
+            ch = ch << 2;
+        else ch = ch >> 1;
+
+        int randnum = randint(256); // randint [0; 255]
+        critical = randnum < std::min(255, ch); // highest possible crit chance is 255/256
+    }
 
     if (critical) {
         turnMem(player).add(TM::CriticalHit);

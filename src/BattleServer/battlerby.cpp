@@ -50,6 +50,7 @@ void BattleRBY::changeStatus(int player, int status, bool tell, int turns)
     }
     // Sub blocks status in Stadium
     if (hasSubstitute(player) && isStadium()) {
+        sendMoveMessage(128, 2, player,0,0, tmove(player).attack);
         return;
     }
 
@@ -93,11 +94,11 @@ void BattleRBY::sendPoke(int slot, int pok, bool silent)
     int player = this->player(slot);
     int snum = slotNum(slot);
 
-    /* reset temporary variables */
+    // reset temporary variables
     pokeMemory(slot).clear();
 
-//    /* Reset counters */
-//    counters(slot).clear();
+    // Reset counters
+    // counters(slot).clear();
 
     notify(All, SendOut, slot, silent, quint8(pok), opoke(slot, player, pok));
 
@@ -105,19 +106,26 @@ void BattleRBY::sendPoke(int slot, int pok, bool silent)
 
     PokeBattle &p = poke(slot);
 
-    //Clears secondary statuses
+    // Clears secondary statuses
     int st = p.status();
     p.fullStatus() = 0;
     p.changeStatus(st);
 
-    /* Give new values to what needed */
+    // Give new values to what needed
     fpoke(slot).init(p, gen());
 
-    if (p.status() != Pokemon::Asleep)
+    if (p.status() == Pokemon::Paralysed) {
+        fpoke(slot).stats[Speed] = std::max(fpoke(slot).stats[Speed] / 4, 1);
+    }
+    if (p.status() == Pokemon::Burnt) {
+        fpoke(slot).stats[Attack] = std::max(fpoke(slot).stats[Attack] / 2, 1);
+    }
+    if (p.status() != Pokemon::Asleep) {
         p.statusCount() = 0;
+    }
 
-    /* Increase the "switch count". Switch count is used to see if the pokemon has switched
-       (like for an attack like attract), it is imo more effective that other means */
+    // Increase the "switch count". Switch count is used to see if the pokemon has switched
+    // (like for an attack like attract), it is imo more effective that other means
     slotMemory(slot).switchCount += 1;
 
     turnMem(slot).flags &= TurnMemory::Incapacitated;
@@ -554,6 +562,12 @@ bool BattleRBY::testAccuracy(int player, int target, bool silent)
         return true;
     }
 
+    //Stadium: Draining moves miss against sub
+    if (isStadium() && hasSubstitute(target) && tmove(player).recoil > 0) {
+        notifyMiss(multiTar, player, target);
+        return false;
+    }
+
     /* For deliberate misses, like with counter */
     if (acc < 0 || pokeMemory(target).value("Invulnerable").toBool()) {
         if (!silent) {
@@ -635,6 +649,77 @@ void BattleRBY::inflictRecoil(int source, int target)
     } else  {
         healLife(source, damage);
     }
+}
+
+void BattleRBY::sendBack(int player, bool silent) {
+
+    BattleBase::sendBack(player, silent);
+
+    if (isStadium()) {
+        battleMemory()["LastDamageTakenByAny"] = 0;
+    }
+}
+
+bool BattleRBY::testStatus(int player) {
+    if (turnMem(player).contains(TM::HasPassedStatus)) {
+        return true;
+    }
+
+    if (poke(player).status() == Pokemon::Asleep) {
+        if (poke(player).statusCount() > 1) {
+            poke(player).statusCount() -= 1;
+            notify(All, StatusMessage, player, qint8(FeelAsleep));
+
+            return false;
+        } else {
+            healStatus(player, Pokemon::Asleep);
+            notify(All, StatusMessage, player, qint8(FreeAsleep));
+
+            return false;
+        }
+    }
+    if (poke(player).status() == Pokemon::Frozen)
+    {
+        notify(All, StatusMessage, player, qint8(PrevFrozen));
+        return false;
+    }
+
+    if (turnMem(player).contains(TM::Flinched)) {
+        notify(All, Flinch, player);
+
+        return false;
+    }
+    if (isConfused(player) && tmove(player).attack != 0) {
+        if (pokeMemory(player)["ConfusedCount"].toInt() > 0) {
+            inc(pokeMemory(player)["ConfusedCount"], -1);
+
+            notify(All, StatusMessage, player, qint8(FeelConfusion));
+
+            if (coinflip(1, 2)) {
+                pokeMemory(player).remove("PetalDanceCount");
+                inflictConfusedDamage(player);
+                return false;
+            }
+        } else {
+            healConfused(player);
+            notify(All, StatusMessage, player, qint8(FreeConfusion));
+        }
+    }
+
+    if (poke(player).status() == Pokemon::Paralysed) {
+        if (coinflip(1, 4)) {
+            pokeMemory(player).remove("PetalDanceCount");
+
+            if (isStadium()) {
+                battleMemory()["LastDamageTakenByAny"] = 0;
+            }
+
+            notify(All, StatusMessage, player, qint8(PrevParalysed));
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void BattleRBY::callpeffects(int source, int target, const QString &name)
@@ -792,18 +877,20 @@ bool BattleRBY::loseStatMod(int player, int stat, int malus, int attacker, bool 
     if (boost > -6) {
         notify(All, StatChange, player, qint8(stat), qint8(-malus), !tell);
         changeStatMod(player, stat, std::max(boost-malus, -6));
+
+        if (stat < Accuracy) {
+            fpoke(player).stats[stat] = getBoostedStat(player, stat);
+        }
+
+        if (!isStadium()) {
+            if (poke(player).status() == Pokemon::Burnt) {
+                fpoke(player).stats[Attack] = std::max(fpoke(player).stats[Attack] / 2, 1);
+            } else if (poke(player).status() == Pokemon::Paralysed) {
+                fpoke(player).stats[Speed] = std::max(fpoke(player).stats[Speed] / 4, 1);
+            }
+        }
     } else {
         notify(All, CappedStat, player, qint8(stat), false);
-    }
-
-    if (stat < Accuracy) {
-        fpoke(player).stats[stat] = getBoostedStat(player, stat);
-    }
-
-    if (poke(player).status() == Pokemon::Burnt) {
-        fpoke(player).stats[Attack] = std::max(fpoke(player).stats[Attack] / 2, 1);
-    } else if (poke(player).status() == Pokemon::Paralysed) {
-        fpoke(player).stats[Speed] = std::max(fpoke(player).stats[Speed] / 4, 1);
     }
 
     return true;
@@ -816,24 +903,26 @@ bool BattleRBY::gainStatMod(int player, int stat, int bonus, int, bool tell)
     if (boost < 6 && (getStat(player, stat) < 999 || stat == Evasion)) {
         notify(All, StatChange, player, qint8(stat), qint8(bonus), !tell);
         changeStatMod(player, stat, std::min(boost+bonus, 6));
-    } else {
-        notify(All, CappedStat, player, qint8(stat), true);
-    }
 
-    if (stat < Accuracy) {
-        fpoke(player).stats[stat] = getBoostedStat(player, stat);
-    }
+        if (stat < Accuracy) {
+            fpoke(player).stats[stat] = getBoostedStat(player, stat);
+        }
 
-    // RBY Doubles and Triples are dumb.
-    // Actually they don't exist, but this is just in case.
-    for (int i = 0; i < numberOfSlots(); i++) {
-        if (i != player) {
-            if (poke(i).status() == Pokemon::Burnt) {
-                fpoke(i).stats[Attack] = std::max(fpoke(i).stats[Attack] / 2, 1);
-            } else if (poke(i).status() == Pokemon::Paralysed) {
-                fpoke(i).stats[Speed] = std::max(fpoke(i).stats[Speed] / 4, 1);
+        // RBY Doubles and Triples are dumb.
+        // Actually they don't exist, but this is just in case.
+        if (!isStadium()) {
+            for (int i = 0; i < numberOfSlots(); i++) {
+                if (i != player) {
+                    if (poke(i).status() == Pokemon::Burnt) {
+                        fpoke(i).stats[Attack] = std::max(fpoke(i).stats[Attack] / 2, 1);
+                    } else if (poke(i).status() == Pokemon::Paralysed) {
+                        fpoke(i).stats[Speed] = std::max(fpoke(i).stats[Speed] / 4, 1);
+                    }
+                }
             }
         }
+    } else {
+        notify(All, CappedStat, player, qint8(stat), true);
     }
 
     return true;
