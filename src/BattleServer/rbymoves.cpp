@@ -125,12 +125,17 @@ struct RBYBide : public MM
 
         inc(poke(b,s)["BideDamage"], poke(b,t).value("DamageInflicted").toInt());
         if (count > 0) {
+            if (b.isStadium()) {
+                b.battleMemory()["LastDamageTakenByAny"] = 0;
+            }
             b.sendMoveMessage(9, 0, s);
         } else {
             int damage = poke(b,s)["BideDamage"].toInt();
 
             b.sendMoveMessage(9, 1, s);
             if (damage == 0) {
+                b.notifyFail(s);
+            } else if (poke(b,t).value("Invulnerable").toBool() && b.isStadium()) { // Bide fails against invulnerable states from Dig and Fly
                 b.notifyFail(s);
             } else {
                 b.inflictDamage(t, 2*damage, s, true);
@@ -179,8 +184,9 @@ struct RBYBind : public MM
     }
 
     static void ts(int s, int, BS &b) {
+        int t = b.opponent(s);
         /* If the opponent was koed, reset everything */
-        if(!poke(b, b.opponent(s)).contains("Bound")) {
+        if (!poke(b,t).contains("Bound")) {
             poke(b,s).remove("BindCount");
         }
         if (poke(b,s).value("LastBind").toInt() == b.turn()-1 && poke(b,s).value("BindCount").toInt() > 0) {
@@ -190,7 +196,7 @@ struct RBYBind : public MM
             /* Bind does the same damage every turn */
             addFunction(turn(b,s), "CustomAttackingDamage", "Bind", &cad);
             if (!b.isStadium()) {
-                turn(b,b.opponent(s)) ["ForceBind"] = true;
+                turn(b,t) ["ForceBind"] = true;
             }
             initMove(fpoke(b,s).lastMoveUsed, b.gen(), tmove(b,s));
             turn(b,s)["TellPlayers"] = false;
@@ -208,7 +214,12 @@ struct RBYBind : public MM
         int t = b.opponent(s);
 
         if (!poke(b,t).contains("Bound")) {
-            fturn(b,s).add(TM::UsePP); //If the opponent switched out, we use an additional PP
+            if (!b.isStadium()) {
+                fturn(b,s).add(TM::UsePP); //If the opponent switched out, we use an additional PP
+            } else { // In Stadium, Bind stops when target switches out
+                poke(b,s).remove("BindCount");
+                return;
+            }
         } else {
             tmove(b,s).accuracy = 0;
             tmove(b,s).power = 1;
@@ -228,9 +239,15 @@ struct RBYBind : public MM
     static void uas2(int s, int t, BS &b) {
         // If the opponent switched, we start all over again
         if (!poke(b,t).contains("Bound")) {
-            uas(s, t, b);
-            return;
+            if (!b.isStadium()) {
+                uas(s, t, b);
+                return;
+            } else { // In Stadium, Bind stops when target switches out
+                poke(b,s).remove("BindCount");
+                return;
+            }
         }
+
         poke(b,s)["LastBind"] = b.turn();
         inc(poke(b,s)["BindCount"], -1);
 
@@ -312,6 +329,11 @@ struct RBYDig : public MM
         poke(b,s)["DigChargeTurn"] = b.turn();
         poke(b,s)["Invulnerable"] = true;
         poke(b,s)["ChargeMove"] = move(b,s);
+
+        if (b.isStadium()) {
+            b.battleMemory()["LastDamageTakenByAny"] = 0;
+        }
+
         b.changeSprite(s, -1);
 
         addFunction(poke(b,s), "TurnSettings", "Dig", &ts);
@@ -503,7 +525,7 @@ struct RBYHaze : public MM
         int t = b.opponent(s);
         b.healStatus(t, b.poke(t).status());
 
-        for (int i = Attack; i < AllStats; i++) {
+        for (int i = (int) Attack; i < (int) AllStats; i++) {
             b.changeStatMod(s, i, 0);
             b.changeStatMod(t, i, 0);
             fpoke(b,s).stats[i] = b.getBoostedStat(s, i);
@@ -563,6 +585,15 @@ struct RBYHyperBeam : public MM
 {
     RBYHyperBeam() {
         functions["UponAttackSuccessful"] = &uas;
+        functions["AttackSomehowFailed"] = &asf;
+    }
+
+    static void asf(int s, int, BS &b) {
+        if (!b.isStadium())
+            return;
+
+        poke(b,s)["Recharging"] = b.turn()+1;
+        addFunction(poke(b,s), "TurnSettings", "HyperBeam", &ts);
     }
 
     static void uas(int s, int t, BS &b) {
@@ -615,6 +646,14 @@ struct RBYLeechSeed : public MM
         if (b.hasType(t, Type::Grass) || b.poke(t).hasStatus(Pokemon::Seeded)) {
             b.failSilently(s);
             b.sendMoveMessage(72, 0, t, Type::Grass);
+            return;
+        }
+
+        //Stadium: Leech Seed misses against subs
+        if (b.isStadium() && b.hasSubstitute(t)) {
+            b.failSilently(s);
+            b.notifyMiss(false, s, t);
+            return;
         }
     }
 
@@ -690,7 +729,11 @@ struct RBYMimic : public MM
             move = b.move(t, b.randint(4));
         }
         int slot = fpoke(b,s).lastMoveSlot;
+        int oldpp = b.PP(s, slot);
         b.changeTempMove(s, slot, move);
+        if (b.isStadium()) {
+            b.changePP(s, slot, oldpp);
+        }
         b.sendMoveMessage(81,0,s,type(b,s),t,move);
     }
 };
@@ -704,6 +747,16 @@ struct RBYMirrorMove : public MM
 
     static void daf(int s, int t, BS &b) {
         int lastMove = fpoke(b,t).lastMoveUsed;
+        if (b.isStadium()) { // Mirror Move also copies charging moves
+            if (poke(b,t).contains("Recharging")) // Only used by Hyper Beam
+                lastMove = Move::HyperBeam;
+                
+            if (poke(b,t).contains("ChargeMove")) // Used by all other charging moves except Bide
+                lastMove = poke(b,t)["ChargeMove"].toInt();
+                
+            if (poke(b,s).contains("BideCount"))
+                lastMove = Move::Bide;
+        }
 
         if (lastMove == 0 || lastMove == Move::MirrorMove) {
             fturn(b,s).add(TM::Failed);
@@ -715,6 +768,17 @@ struct RBYMirrorMove : public MM
         removeFunction(turn(b,s), "UponAttackSuccessful", "MirrorMove");
 
         int move = fpoke(b,t).lastMoveUsed;
+        if (b.isStadium()) {
+            if (poke(b,t).contains("Recharging"))
+                move = Move::HyperBeam;
+                
+            if (poke(b,t).contains("ChargeMove"))
+                move = poke(b,t)["ChargeMove"].toInt();
+                
+            if (poke(b,t).contains("BideCount"))
+                move = Move::Bide;
+        }
+        
         BS::BasicMoveInfo info = tmove(b,s);
         RBYMoveEffect::setup(move,s,s,b);
         b.useAttack(s,move,true,true);
@@ -770,7 +834,10 @@ struct RBYPetalDance : public MM
         inc(poke(b,s)["PetalDanceCount"], -1);
         if (poke(b,s).value("PetalDanceCount").toInt() <= 0) {
             poke(b,s).remove("PetalDanceCount");
-            b.inflictConfused(s, s, true);
+            if (b.isStadium()) {
+                b.sendMoveMessage(93,0,s,type(b,s)); //not sure if the message displays too but why not!
+            }
+            b.inflictConfused(s, s, b.isStadium()); //RBY doesn't tell when confused. This can reveal duration if left alone
         }
     }
 
@@ -866,12 +933,15 @@ struct RBYRazorWind : public MM
         b.sendMoveMessage(104, turn(b,s)["RazorWind_Arg"].toInt(), s, type(b,s));
         /* Skull bash */
 
-        poke(b,s)["ChargingMove"] = mv;
+        poke(b,s)["ChargeMove"] = mv;
         poke(b,s)["ReleaseTurn"] = b.turn() + 1;
         turn(b,s)["TellPlayers"] = false;
         tmove(b, s).power = 0;
         tmove(b, s).status = Pokemon::Fine;
         tmove(b, s).targets = Move::User;
+        if (b.isStadium()) {
+            b.battleMemory()["LastDamageTakenByAny"] = 0;
+        }
         addFunction(poke(b,s), "TurnSettings", "RazorWind", &ts);
     }
 
@@ -881,7 +951,7 @@ struct RBYRazorWind : public MM
         }
         fturn(b,s).add(TM::NoChoice);
         fturn(b,s).add(TM::UsePP);
-        int mv = poke(b,s)["ChargingMove"].toInt();
+        int mv = poke(b,s)["ChargeMove"].toInt();
         initMove(mv, b.gen(), tmove(b, s));
         turn(b,s)["AutomaticMove"] = mv;
     }
@@ -900,7 +970,9 @@ struct RBYSubstitute : public MM
             b.sendMoveMessage(128, 0, s,0,s);
             return;
         }
-        if (b.poke(s).lifePoints() < b.poke(s).totalLifePoints()/4) {
+        int currentHP = b.poke(s).lifePoints();
+        int quarterMax = b.poke(s).totalLifePoints() / 4;
+        if ((currentHP < quarterMax) || (b.isStadium() && currentHP <= quarterMax)) {
             b.failSilently(s);
             b.sendMoveMessage(8,0,s);
             return;
@@ -915,6 +987,7 @@ struct RBYSubstitute : public MM
         b.changeHp(s, newHp);
         if (b.koed(s)) {
             b.koPoke(s, s);
+            b.notifyKO(s); //otherwise they wont know!
         } else {
             fpoke(b,s).add(BS::BasicPokeInfo::Substitute);
             fpoke(b,s).substituteLife = b.poke(s).totalLifePoints()/4+1;
@@ -941,6 +1014,7 @@ struct RBYConversion : public MM
     }
 
     static void uas(int s, int t, BS &b) {
+        b.sendMoveMessage(172,0,s,type(b,s),t);
         fpoke(b,s).type1 = fpoke(b,t).type1;
         fpoke(b,s).type2 = fpoke(b,t).type2;
         fpoke(b,s).types = fpoke(b,t).types;
@@ -951,6 +1025,15 @@ struct RBYTransform : public MM
 {
     RBYTransform() {
         functions["UponAttackSuccessful"] = &uas;
+        functions["DetermineAttackFailure"] = &daf;
+    }
+
+    static void daf(int s, int t, BS &b) {
+        //Can't transform into a transformed pokemon in Stadium
+        if (b.isStadium() && poke(b,t).contains("PreTransformPoke")) {
+            fturn(b,s).add(TM::Failed);
+            return;
+        }
     }
 
     static void uas(int s, int t, BS &b) {

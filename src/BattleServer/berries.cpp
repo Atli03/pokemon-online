@@ -190,11 +190,14 @@ struct BMAntiSuperEffective : public BM
         if (!b.attacking()) {
             return;
         }
-        if (!b.hasSubstitute(s) && fturn(b,t).typeMod > 0 && tmove(b,t).type == poke(b,s)["ItemArg"].toInt()) {
+        if ((!b.hasSubstitute(s) || b.hasWorkingAbility(t, Ability::Infiltrator)) && fturn(b,t).typeMod > 0 && tmove(b,t).type == poke(b,s)["ItemArg"].toInt()) {
             b.sendBerryMessage(4,s,0,t,b.poke(s).item(),move(b,t));
             b.eatBerry(s,false);
-
-            turn(b,t)["Mod3Berry"] = -5;
+            if (b.gen() < 5) {
+                turn(b,t)["Mod3Berry"] = -10;
+            } else {
+                turn(b,t)["Mod3Berry"] = 0x800;
+            }
         }
     }
 };
@@ -212,11 +215,14 @@ struct BMAntiNormal : public BM
         /* We never want to activate this berry if this is consumed by Bug Bite */
         if (b.gen() >= 4 && !turn(b,s).value("BugBiter").toBool()) {
             /* Normal moves */
-            if (!b.hasSubstitute(s) && tmove(b,t).type == 0) {
+            if ((!b.hasSubstitute(s) || b.hasWorkingAbility(t, Ability::Infiltrator)) && tmove(b,t).type == 0) {
                 b.sendBerryMessage(4,s,0,t,b.poke(s).item(),move(b,t));
                 b.eatBerry(s,false);
-
-                turn(b,t)["Mod3Berry"] = -5;
+                if (b.gen() < 5) {
+                    turn(b,t)["Mod3Berry"] = -10;
+                } else {
+                    turn(b,t)["Mod3Berry"] = 0x800;
+                }
             }
         }
     }
@@ -225,21 +231,23 @@ struct BMAntiNormal : public BM
 struct BMSuperHP : public BM
 {
     BMSuperHP() {
-        functions["TestPinch"] = &uodr;
+        functions["UponOffensiveDamageReceived"] = &uodr;
     }
 
     static void uodr(int s, int, BS &b) {
-        if (!b.attacking()) {
-            return;
-        }
         if (b.attacker() == s)
             return;
-        if (fturn(b,b.attacker()).typeMod <= 0)
+        if (slot(b,s).value("DoomDesireDamagingNow").toBool()) {
+            if (slot(b,s).value("DoomDesireTypeMod").toInt() <= 0) {
+                return;
+            }
+        } else if (fturn(b,b.attacker()).typeMod <= 0) {
             return;
+        }
         if (b.canHeal(s,BS::HealByItem,b.poke(s).item())) {
             b.eatBerry(s);
             b.sendBerryMessage(6,s,0);
-            b.healLife(s, b.poke(s).totalLifePoints()/5);
+            b.healLife(s, b.poke(s).totalLifePoints()/4);
         }
     }
 };
@@ -251,6 +259,7 @@ struct BMPinchStat : public BMPinch
         functions["AfterHPChange"] = &ahpc;
         functions["TestPinch"] = &tp;
         functions["UponReactivation"] = &tp;
+        functions["AfterStatChange"] = &tp;
     }
 
     static void ahpc(int p, int s, BS &b) {
@@ -263,6 +272,7 @@ struct BMPinchStat : public BMPinch
         tp(p, s, b);
     }
 
+    //If a pokemon couldn't boost when Pinched but they can at a later point and still are within the threshold it will activate
     static void tp(int p, int s, BS &b) {
         /* The berry may change after the call to test pinch (eaten),
            so saved before. */
@@ -273,10 +283,17 @@ struct BMPinchStat : public BMPinch
 
         int arg = poke(b,p)["ItemArg"].toInt();
 
+        //Pinch Berries aren't consumed if the pokemon would gain no effect from it.
         if (b.isOut(s)) {
             if (b.hasWorkingAbility(s, Ability::Contrary)) {
+                if (b.hasMinimalStatMod(s, arg)) {
+                    return;
+                }
                 b.sendBerryMessage(7,s,1,s, berry, arg);
             } else {
+                if (b.hasMaximalStatMod(s, arg)) {
+                    return;
+                }
                 b.sendBerryMessage(7,s,0,s, berry, arg);
             }
             b.inflictStatMod(s, arg, 1, s, false);
@@ -403,9 +420,9 @@ struct BMBerryLock : public BMPinch
         }
 
         if (b.gen() <= 4) {
-            turn(b,s)["BerryLock"] = true;
+            poke(b,s)["BerryLock"] = true;
         } else {
-            turn(b,s)["Stat6BerryModifier"] = 4;
+            poke(b,s)["Stat6BerryModifier"] = 4; //0x1333
         }
         b.sendBerryMessage(10,s,0);
     }

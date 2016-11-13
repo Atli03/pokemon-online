@@ -26,6 +26,29 @@ QVariantMap toJson(const BattleConfiguration &c)
     return ret;
 }
 
+QVariantMap toJson(const FullBattleConfiguration &conf)
+{
+    QVariantMap ret = toJson((BattleConfiguration&)conf);
+
+    if (conf.isPlayer(0) || conf.isPlayer(1)) {
+        QVariantList teams;
+        if (conf.teams[0]) {
+            teams << toJson(*conf.teams[0]);
+        } else {
+            teams << toJson(TeamBattle());
+        }
+        if (conf.teams[1]) {
+            teams << toJson(*conf.teams[1]);
+        } else {
+            teams << toJson(TeamBattle());
+        }
+
+        ret.insert("teams", teams);
+    }
+
+    return ret;
+}
+
 QVariantMap toJson(const BattleChoices &choices)
 {
     QVariantMap ret;
@@ -34,6 +57,7 @@ QVariantMap toJson(const BattleChoices &choices)
     ret.insert("switch", choices.switchAllowed);
     ret.insert("attack", choices.attacksAllowed);
     ret.insert("mega", choices.mega);
+    ret.insert("zmove", choices.zmove);
 
     QVariantList list;
     for (int i = 0; i < 4; i++) {
@@ -177,6 +201,7 @@ BattleChoice fromJson<BattleChoice>(const QVariantMap &v){
     if (info.type == AttackType) {
         info.choice.attack.attackSlot = v.value("attackSlot").toInt();
         info.choice.attack.mega = v.value("mega").toBool();
+        info.choice.attack.zmove = v.value("zmove").toBool();
         if (v.value("target").isValid()) {
             info.choice.attack.attackTarget = v.value("target").toInt();
         } else {
@@ -214,6 +239,8 @@ template<>
 PersonalTeam fromJson<PersonalTeam>(const QVariantMap &map) {
     PersonalTeam ret;
 
+    bool isIllegal = map.value("illegal").toBool();
+
     ret.defaultTier() = map.value("tier").toString();
     ret.gen() = fromJson<Pokemon::gen>(map.value("gen").toMap());
 
@@ -222,6 +249,7 @@ PersonalTeam fromJson<PersonalTeam>(const QVariantMap &map) {
     for (int i = 0; i < std::min(6, list.length()); i++) {
         ret.poke(i) = fromJson<PokePersonal>(list[i].toMap());
         ret.poke(i).gen() = ret.gen();
+        ret.poke(i).illegal() = isIllegal;
     }
 
     return ret;

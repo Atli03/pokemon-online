@@ -93,6 +93,8 @@ QVariant PokeMovesModel::headerData(int section, Qt::Orientation orientation, in
             return tr("Range");
         } else if (section == Priority) {
             return tr("Priority");
+        } else if (section == Flags) {
+            return tr("Flags");
         }
     case Qt::ToolTipRole:
         if (section == Type) {
@@ -114,6 +116,8 @@ QVariant PokeMovesModel::headerData(int section, Qt::Orientation orientation, in
             return tr("The Pokemon affected by the move.");
         } else if (section == Priority) {
             return tr("The speed bracket of a move.");
+        } else if (section == Flags) {
+            return tr("The special categorizations of a move such as \"Makes Contact\" or \"Sound-based\".");
         }
     };
     return QVariant();
@@ -133,7 +137,12 @@ QVariant PokeMovesModel::data(const QModelIndex &index, int role) const
         } else if (section == Learning) {
             return storage[names[index.row()]].second;
         } else if (section == PP) {
-            return MoveInfo::PP(movenum, gen)*8/5;
+            int peeps = MoveInfo::PP(movenum, gen);
+            if (gen < 3) {
+                return peeps + std::min(7, peeps/5) * 3; /* "x + min(7,x/5)*y". X = base PP, Y = PP ups used */
+            } else {
+                return peeps*8/5;
+            }
         } else if (section == Pow) {
             //int power = MoveInfo::Power(movenum, gen);
             //if (power > 1) return power;
@@ -146,8 +155,10 @@ QVariant PokeMovesModel::data(const QModelIndex &index, int role) const
             return CategoryInfo::Name(MoveInfo::Category(movenum, gen));
         } else if (section == Range) {
             return MoveInfo::TargetS(movenum, gen);
-        }else if (section == Priority) {
+        } else if (section == Priority) {
             return MoveInfo::PriorityS(movenum, gen);
+        } else if (section == Flags) {
+            return MoveInfo::FlagsS(movenum, gen);
         }
     case Qt::DecorationRole:
         if (section == Type) {

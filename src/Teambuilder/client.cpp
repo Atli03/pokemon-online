@@ -103,13 +103,13 @@ Client::Client(ClientPluginManager *p, TeamHolder *t, const QString &url , const
     layout->addLayout(buttonsLayout);
     buttonsLayout->addWidget(findMatch = new QPushButton(tr("&Find Battle")));
     buttonsLayout->addWidget(myregister = new QPushButton(tr("&Register")));
+    buttonsLayout->addWidget(openteambuilder = new QPushButton(tr("&Open Teambuilder")));
     buttonsLayout->addWidget(myexit = new QPushButton(tr("&Exit")));
-    buttonsLayout->addWidget(mysender = new QPushButton(tr("&Send")));
 
     findMatch->setObjectName("FindBattle");
     myregister->setObjectName("Register");
     myexit->setObjectName("Exit");
-    mysender->setObjectName("Send");
+    openteambuilder->setObjectName("OpenTeamBuilder");
 
     QPalette pal = palette();
     pal.setColor(QPalette::AlternateBase, Qt::blue);
@@ -124,7 +124,7 @@ Client::Client(ClientPluginManager *p, TeamHolder *t, const QString &url , const
     connect(mainChat, SIGNAL(currentChanged(int)), SLOT(firstChannelChanged(int)));
     connect(myexit, SIGNAL(clicked()), SLOT(showExitWarning()));
     connect(myline, SIGNAL(returnPressed()), SLOT(sendText()));
-    connect(mysender, SIGNAL(clicked()), SLOT(sendText()));
+    connect(openteambuilder, SIGNAL(clicked()), SLOT(openTeamBuilder()));
     connect(myregister, SIGNAL(clicked()), SLOT(sendRegister()));
     connect(findMatch, SIGNAL(clicked()), SLOT(openBattleFinder()));
 
@@ -1445,6 +1445,11 @@ QMenuBar * Client::createMenuBar(MainEngine *w)
     connect(oldShortcuts, SIGNAL(triggered(bool)), SLOT(useOldShortcuts(bool)));
     oldShortcuts->setChecked(globals.value("Client/UsingOldShortcuts").toBool());
 
+    QAction * hide_announcement = menuActions->addAction(tr("Hide announcement banner"));
+    hide_announcement->setCheckable(true);
+    connect(hide_announcement, SIGNAL(triggered(bool)), SLOT(toggleAnnouncementOption(bool)));
+    hide_announcement->setChecked(globals.value("Client/HideAnnouncement").toBool());
+
     mytiermenu = menuBar->addMenu(tr("&Tiers"));
     rebuildTierMenu();
 
@@ -1510,8 +1515,11 @@ QMenuBar * Client::createMenuBar(MainEngine *w)
 
     w->addLanguageMenu(menuBar);
 
-    QMenu *helpMenu = menuBar->addMenu(tr("&About"));
-    helpMenu->addAction(tr("&Credits"), w, SLOT(launchCredits()));
+    QMenu *helpMenu = menuBar->addMenu(tr("&Help"));
+    helpMenu->addAction(tr("Visit Pokemon Online Webpage"), w, SLOT(openWebsite()));
+    helpMenu->addAction(tr("Visit Pokemon Online Forum"), w, SLOT(openForum()));
+    helpMenu->addSeparator();
+    helpMenu->addAction(tr("About Pokemon Online"), w, SLOT(launchAbout()));
 
     mymenubar = menuBar;
 
@@ -1621,6 +1629,7 @@ void Client::askForPass(const QByteArray &salt, bool registerRequest, bool repea
     if (!ret) {
         if (loggedIn)
             myregister->setEnabled(true);
+        else emit done();    
         return;
     }
     pass = passEdit->text();
@@ -1879,7 +1888,19 @@ void Client::announcementReceived(const QString &ann)
 
     server_announcement->setText(ann);
     server_announcement->setAlignment(Qt::AlignCenter);
-    server_announcement->show();
+
+    if (globals.value("Client/HideAnnouncement").toBool() == false)
+        server_announcement->show();
+}
+
+void Client::toggleAnnouncementOption(bool hide)
+{
+    globals.setValue("Client/HideAnnouncement", hide);
+
+    if (hide == true)
+        server_announcement->hide();
+    else
+        server_announcement->show();
 }
 
 void Client::tierListReceived(const QByteArray &tl)
@@ -2187,8 +2208,11 @@ void Client::battleFinished(int battleid, int res, int winner, int loser)
 
 void Client::battleCommand(int battleid, const QByteArray &command)
 {
-    if (!mybattles.contains(battleid))
+    //qDebug() << "Received command " << int(command[0]) << " for " << battleid;
+    if (!mybattles.contains(battleid)) {
+        //qDebug() << "Received data non existing battle " << battleid;
         return;
+    }
 
     mybattles[battleid]->receiveData(command);
 }
@@ -2198,12 +2222,13 @@ void Client::disableBattleWindow(int battleid)
     if (!mybattles.contains(battleid) && !mySpectatingBattles.contains(battleid))
         return;
 
-    BaseBattleWindowInterface *w = mybattles.contains(battleid) ? mybattles.take(battleid) : mySpectatingBattles.take(battleid);
+    BaseBattleWindowInterface *w = mybattles.contains(battleid) ? mybattles.value(battleid) : mySpectatingBattles.take(battleid);
     w->disable();
 }
 
 void Client::removeBattleWindow(int battleid)
 {
+    //qDebug() << "removing battle window for " << battleid;
     if (!mybattles.contains(battleid))
         return;
 
@@ -2300,7 +2325,7 @@ void Client::ladderChanged(int id, bool ladder)
 
 bool Client::busy() const
 {
-    return away();
+    return away() || mychallenges.size() >= 5;
 }
 
 bool Client::away() const

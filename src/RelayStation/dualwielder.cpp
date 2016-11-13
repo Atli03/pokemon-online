@@ -763,9 +763,13 @@ void DualWielder::readWebSocket(const QString &frame)
             connect(network, SIGNAL(_error()), network, SLOT(deleteLater()));
             connect(network, SIGNAL(isFull(QByteArray)), SLOT(readSocket(QByteArray)));
             connect(this, SIGNAL(sendCommand(QByteArray)), network, SLOT(send(QByteArray)));
-        } else if (command == "registry" && !registryRead) {
+        } /*else if (command == "registry" && !registryRead) {
             //web->write(servers);
             //registryRead = true;
+        } */
+        else if (command == "replay") {
+            // slug is used to remove special characters and / and any hacks
+            readReplay(data);
         } else {
             web->write(QString("error|You need to choose a server to connect to."));
         }
@@ -993,6 +997,84 @@ void DualWielder::readWebSocket(const QString &frame)
             notify(Nw::OptionsChange, Flags(ladder + ((away) << 1)));
         }
     }
+}
+
+void DualWielder::readReplay(const QString &data)
+{
+    QString file = QFileInfo(data).baseName();
+
+    QFile f;
+    bool json = false;
+
+    if (QFileInfo("logs/replays/"+file+".json").exists()) {
+        f.setFileName("logs/replays/"+file+".json");
+        json = true;
+    } else {
+        f.setFileName("logs/battles/" + file.left(6) + "/" + file.mid(7) + ".poreplay");
+    }
+
+    if (!f.exists() || !f.open(QIODevice::ReadOnly)) {
+        web->write(QString("error|Replay file not found."));
+        return;
+    }
+
+    if (json) {
+        while (!f.error() && !f.atEnd()) {
+            web->write(QString::fromUtf8(f.readLine()).trimmed());
+        }
+        return;
+    }
+
+    QFile out("logs/replays/"+file+".json");
+    out.open(QIODevice::WriteOnly);
+
+    QByteArray versionS = f.readLine().trimmed();
+
+//    if (version != "battle_logs_v2" && version != "battle_logs_v3") {
+//        QMessageBox::critical(nullptr, tr("Log format not supported"), tr("The replay version of the file isn't supported by this client."));
+//        deleteLater();
+//        return;
+//    }
+
+    int version = versionS.right(1).toInt();
+
+    DataStream stream(&f, version);
+
+    FullBattleConfiguration conf;
+    stream >> conf;
+
+    auto confJson = toJson((BattleConfiguration&)conf);
+    confJson.insert("names", QVariantList() << conf.name[0] << conf.name[1]);
+
+    auto writeCommand = [&](const QByteArray &s) {
+        out.write(s+"\n");
+        web->write(QString::fromUtf8(s));
+    };
+
+    writeCommand("watchbattle|0|"+jserial.serialize(confJson));
+
+    quint32 time;
+    QByteArray command;
+
+    while (!stream.atEnd()) {
+        stream >> time;
+        stream >> command;
+
+        if (command.size() == 0) {
+            break;
+        }
+
+        input.receiveData(command);
+
+        QVariantMap jcommand = battleConverter.getCommand();
+        if (jcommand.size() == 0) {
+            continue;
+        }
+
+        writeCommand("replaycommand|"+QByteArray::number(time)+"|"+jserial.serialize(jcommand));
+    }
+
+    writeCommand("stopwatching|0");
 }
 
 void DualWielder::socketConnected()

@@ -128,10 +128,10 @@ void Server::start(){
     setDefaultValue("Battles/ForceUnratedForSameIP", true);
     setDefaultValue("Battles/ConsecutiveFindBattlesWithDifferentIPs", 5);
     setDefaultValue("Battles/RatedThroughChallenge", false);
-    setDefaultValue("Network/ProxyServers", QString("127.0.0.1"));
+    setDefaultValue("Network/ProxyServers",QString("127.0.0.1,::1%0,localhost"));
     setDefaultValue("Network/LowTCPDelay", false);
     setDefaultValue("AntiDOS/ShowOveractiveMessages", true);
-    setDefaultValue("AntiDOS/TrustedIps", "127.0.0.1");
+    setDefaultValue("AntiDOS/TrustedIps", "127.0.0.1,::1%0,localhost");
     setDefaultValue("AntiDOS/MaxPeoplePerIp", 2);
     setDefaultValue("AntiDOS/MaxCommandsPerUser", 50);
     setDefaultValue("AntiDOS/MaxKBPerUser", 25);
@@ -248,6 +248,7 @@ void Server::start(){
     safeScripts = s.value("Scripts/SafeMode").toBool();
     overactiveShow = s.value("AntiDOS/ShowOveractiveMessages").toBool();
     proxyServers = s.value("Network/ProxyServers").toString().split(",");
+    trustedIps = s.value("AntiDOS/TrustedIps").toString().split(",");
     passwordProtected = s.value("Server/RequirePassword").toBool();
     serverPassword = s.value("Server/Password").toByteArray();
     zippedTiers = makeZipPacket(NetworkServ::TierSelection, TierMachine::obj()->tierList());
@@ -492,7 +493,7 @@ void Server::removeChannel(int channelid) {
         return;
 
     QString chanName = channelNames.take(channelid);
-    printLine(QString("Channel %1 was removed.").arg(chanName));
+    //printLine(QString("Channel %1 was removed.").arg(chanName));
     channelids.remove(chanName.toLower());
     channels.take(channelid)->onRemoval();
 
@@ -613,7 +614,7 @@ void Server::mainChanChanged(const QString &name) {
     }
 
     if (channelExist(name)) {
-        printLine("Another channel with that name already exists, doing nothing.");
+        //printLine("Another channel with that name already exists, doing nothing.");
         return;
     }
 
@@ -836,25 +837,25 @@ void Server::loggedIn(int id, const QString &name)
             if (SecurityManager::exist(name) && SecurityManager::member(name).isProtected()) {
                 /* Replaces the other one */
                 if (!player(ids)->waitingForReconnect()) {
-                    printLine(tr("%1: replaced by new connection.").arg(name));
+                    //printLine(tr("%1: replaced by new connection.").arg(name));
                     sendMessage(ids, QString("You logged in from another client with the same name. Logging off."));
                 }
                 //When the client didn't intend to reconnect, we transfer only if the player was battling and there's a battle to save.
                 if (!player(ids)->battling()) {
-                    printLine(tr("kicking %1 because has the name %2 too").arg(ids).arg(name));
+                    //printLine(tr("kicking %1 because has the name %2 too").arg(ids).arg(name));
                     player(ids)->kick();
                 } else {
-                    printLine(tr("transferring player from id %1 to id %2").arg(id).arg(ids));
+                    //printLine(tr("transferring player from id %1 to id %2").arg(id).arg(ids));
                     transferId(id, ids, true);
                     return;
                 }
             } else {
                 // If the other player is disconnected, we remove him
                 if (player(ids)->waitingForReconnect()) {
-                    printLine(tr("Removing disconnected %1 for the new connection").arg(name));
+                    //printLine(tr("Removing disconnected %1 for the new connection").arg(name));
                     player(ids)->autoKick();
                 } else {
-                    printLine(tr("Name %1 already in use, disconnecting player %2").arg(name, QString::number(id)));
+                    //printLine(tr("Name %1 already in use, disconnecting player %2").arg(name, QString::number(id)));
                     sendMessage(id, QString("Another with the name %1 is already logged in").arg(name));
                     silentKick(id);
                     return;
@@ -990,9 +991,12 @@ void Server::sendBattleCommand(int publicId, int id, const QByteArray &comm)
     if (!playerExist(id))
         return;
 
-    if (player(id)->hasBattle(publicId))
+    if (player(id)->hasBattle(publicId) || player(id)->lastBattle() == publicId) {
+//        if (player(id)->lastBattle() == publicId) {
+//            qDebug() << "Sending post battle command";
+//        }
         player(id)->relay().sendBattleCommand(publicId, comm);
-    else {
+    } else {
         if (player(id)->battlesSpectated.contains(publicId))
             player(id)->relay().sendWatchingCommand(publicId, comm);
     }
@@ -1009,7 +1013,7 @@ void Server::sendServerMessage(const QString &message)
 
 bool Server::joinRequest(int player, const QString &channel)
 {
-    printLine(tr("Player %1 requesting to join channel %2").arg(player).arg(channel));
+    //printLine(tr("Player %1 requesting to join channel %2").arg(player).arg(channel));
 
     if (!channelExist(channel)) {
         if (addChannel(channel, player) == -1) {
@@ -1416,6 +1420,15 @@ void Server::proxyServersChanged(const QString &ips)
     forcePrint("Proxy Servers setting changed");
 }
 
+void Server::trustedIpsChanged(const QString &ips)
+{
+    QStringList newlist = ips.split(",");
+    if (trustedIps == newlist)
+        return;
+    trustedIps = ips.split(",");
+    forcePrint("Trusted IPs setting changed");
+}
+
 void Server::serverPasswordChanged(const QString &pass)
 {
     if (serverPassword == pass.toUtf8())
@@ -1528,10 +1541,10 @@ void Server::startBattle(int id1, int id2, const ChallengeInfo &c, int team1, in
     Player *p1 (player(id1));
     Player *p2 (player(id2));
 
+    myengine->beforeBattleStarted(id1,id2,c,id,team1,team2);
+
     TeamBattle battleTeam1 = *(new TeamBattle(p1->team(team1)));
     TeamBattle battleTeam2 = *(new TeamBattle(p2->team(team2)));
-
-    myengine->beforeBattleStarted(id1,id2,c,id,battleTeam1,battleTeam2);
 
     QString fulltier = QString("Mixed %1").arg(GenInfo::Version(p1->team(team1).gen));
     QString tier = p1->team(team1).tier == p2->team(team2).tier ? p1->team(team1).tier : fulltier;
@@ -1647,9 +1660,9 @@ void Server::battleResult(int battleid, int desc, int winner, int loser)
         battleList.remove(battleid);
 
         if (desc == Forfeit) {
-            printLine(QString("%1 forfeited his battle against %2").arg(name(loser), name(winner)));
+            printLine(QString("%1 forfeited their battle against %2").arg(name(loser), name(winner)));
         } else if (desc == Win) {
-            printLine(QString("%1 won his battle against %2").arg(name(winner), name(loser)));
+            printLine(QString("%1 won their battle against %2").arg(name(winner), name(loser)));
         } else if (desc == Tie) {
             printLine(QString("%1 and %2 tied").arg(name(winner), name(loser)));
         }
@@ -1770,13 +1783,13 @@ void Server::recvTeam(int id, const QString &_name)
 
 void Server::disconnected(int id)
 {
-    printLine(QString("Received disconnection from %1 (%2)").arg(name(id)).arg(id));
+    //printLine(QString("Received disconnection from %1 (%2)").arg(name(id)).arg(id));
     disconnectPlayer(id);
 }
 
 void Server::logout(int id)
 {
-    printLine(QString("Received logout from %1 (%2)").arg(name(id)).arg(id));
+    //printLine(QString("Received logout from %1 (%2)").arg(name(id)).arg(id));
     removePlayer(id);
 }
 

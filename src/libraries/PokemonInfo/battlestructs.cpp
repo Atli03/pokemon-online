@@ -152,13 +152,13 @@ void PokeBattle::init(PokePersonal &poke)
     ability() = poke.ability();
 
     if (!illegal()) {
-        if (item() == Item::GriseousOrb && num() != Pokemon::Giratina_O && p.gen() <= 4) {
+        if (item() == Item::GriseousOrb && num() != Pokemon::Giratina_Origin && p.gen() <= 4) {
             item() = 0;
-        } else if (num() == Pokemon::Giratina_O && item() != Item::GriseousOrb) {
+        } else if (num() == Pokemon::Giratina_Origin && item() != Item::GriseousOrb) {
             num() = Pokemon::Giratina;
             ability() = Ability::Pressure;
         } else if (num() == Pokemon::Giratina && item() == Item::GriseousOrb) {
-            num() = Pokemon::Giratina_O;
+            num() = Pokemon::Giratina_Origin;
             ability() = Ability::Levitate;
         }
 
@@ -173,9 +173,8 @@ void PokeBattle::init(PokePersonal &poke)
             num().subnum = ItemInfo::DriveForme(item());
         }
 
-        if (num() == Pokemon::Keldeo_R && !poke.hasMove(Move::SecretSword)) {
-            if (p.gen() < 6)
-                num() = Pokemon::Keldeo;
+        if (num() == Pokemon::Keldeo_Resolute && !poke.hasMove(Move::SecretSword)) {
+            num() = Pokemon::Keldeo;
         }
 
         Pokemon::uniqueId ori = PokemonInfo::OriginalForme(num());
@@ -608,6 +607,9 @@ void TeamBattle::generateRandom(Pokemon::gen gen, bool illegal)
         if (PokemonInfo::OriginalForme(p.num()) == Pokemon::Arceus && p.ability() == Ability::Multitype) {
             p.num() = Pokemon::uniqueId(Pokemon::Arceus, ItemInfo::PlateType(p.item()));
         }
+        if (PokemonInfo::OriginalForme(p.num()) == Pokemon::Silvally && p.ability() == Ability::RKSSystem) {
+            p.num() = Pokemon::uniqueId(Pokemon::Silvally, ItemInfo::MemoryChipType(p.item()));
+        }
         if (PokemonInfo::OriginalForme(p.num()) == Pokemon::Genesect) {
             p.num() = Pokemon::uniqueId(Pokemon::Genesect, ItemInfo::DriveForme(p.item()));
         }
@@ -617,7 +619,7 @@ void TeamBattle::generateRandom(Pokemon::gen gen, bool illegal)
             if (p.num() == Pokemon::Giratina && p.ability() == Ability::Levitate) {
                 p.ability() = Ability::Pressure;
             }
-            if (p.num() == Pokemon::Giratina_O && p.ability() == Ability::Pressure) {
+            if (p.num() == Pokemon::Giratina_Origin && p.ability() == Ability::Pressure) {
                 p.ability() = Ability::Levitate;
             }
         }
@@ -875,6 +877,7 @@ DataStream & operator << (DataStream &out, const FullBattleConfiguration &c)
 BattleChoices::BattleChoices()
 {
     mega = false;
+    zmove = false;
     switchAllowed = true;
     attacksAllowed = true;
     std::fill(attackAllowed, attackAllowed+4, true);
@@ -907,13 +910,13 @@ BattleChoices BattleChoices::SwitchOnly(quint8 slot)
 
 DataStream & operator >> (DataStream &in, BattleChoices &po)
 {
-    in >> po.numSlot >> po.switchAllowed >> po.attacksAllowed >> po.attackAllowed[0] >> po.attackAllowed[1] >> po.attackAllowed[2] >> po.attackAllowed[3] >> po.mega;
+    in >> po.numSlot >> po.switchAllowed >> po.attacksAllowed >> po.attackAllowed[0] >> po.attackAllowed[1] >> po.attackAllowed[2] >> po.attackAllowed[3] >> po.mega >> po.zmove;
     return in;
 }
 
 DataStream & operator << (DataStream &out, const BattleChoices &po)
 {
-    out << po.numSlot << po.switchAllowed << po.attacksAllowed << po.attackAllowed[0] << po.attackAllowed[1] << po.attackAllowed[2] << po.attackAllowed[3] << po.mega;
+    out << po.numSlot << po.switchAllowed << po.attacksAllowed << po.attackAllowed[0] << po.attackAllowed[1] << po.attackAllowed[2] << po.attackAllowed[3] << po.mega << po.zmove;
     return out;
 }
 
@@ -934,6 +937,8 @@ bool BattleChoice::match(const BattleChoices &avail) const
         if (avail.struggle() != (attackSlot() == -1))
             return false;
         if (mega() && !avail.mega)
+            return false;
+        if (zmove() && !avail.zmove)
             return false;
         if (!avail.struggle()) {
             if (attackSlot() < 0 || attackSlot() > 3) {
@@ -978,7 +983,7 @@ DataStream & operator >> (DataStream &in, BattleChoice &po)
         in >> po.choice.switching.pokeSlot;
         break;
     case AttackType:
-        in >> po.choice.attack.attackSlot >> po.choice.attack.attackTarget >> po.choice.attack.mega;
+        in >> po.choice.attack.attackSlot >> po.choice.attack.attackTarget >> po.choice.attack.mega >> po.choice.attack.zmove;
         break;
     case RearrangeType:
         for (int i = 0; i < 6; i++) {
@@ -1006,7 +1011,7 @@ DataStream & operator << (DataStream &out, const BattleChoice &po)
         out << po.choice.switching.pokeSlot;
         break;
     case AttackType:
-        out << po.choice.attack.attackSlot << po.choice.attack.attackTarget << po.choice.attack.mega;
+        out << po.choice.attack.attackSlot << po.choice.attack.attackTarget << po.choice.attack.mega << po.choice.attack.zmove;
         break;
     case RearrangeType:
         for (int i = 0; i < 6; i++) {

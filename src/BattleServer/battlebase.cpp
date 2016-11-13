@@ -55,13 +55,13 @@ void BattleBase::init(const BattlePlayer &p1, const BattlePlayer &p2, const Chal
     terrain = 0;
     terrainCount = -1;
 
+    conf.flags.setFlag(BattleConfiguration::Rated, c.rated);
+
     /* timers for battle timeout */
-    timeleft[0] = 5*60;
-    timeleft[1] = 5*60;
+    timeleft[0] = maxTime();
+    timeleft[1] = maxTime();
     timeStopped[0] = true;
     timeStopped[1] = true;
-
-    conf.flags.setFlag(BattleConfiguration::Rated, c.rated);
 
     if (mode() == ChallengeInfo::Doubles) {
         numberOfSlots() = 4;
@@ -368,7 +368,7 @@ QList<int> BattleBase::allRevs(int p) const
 
 int BattleBase::opponent(int player) const
 {
-    return 1-player;
+    return 1 - this->player(player);
 }
 
 int BattleBase::partner(int spot) const
@@ -546,14 +546,14 @@ void BattleBase::stopClock(int player, bool broadCoast)
 
 #ifdef QT5
         if (broadCoast) {
-            timeleft[player] = std::min(int(timeleft[player].load()+20), 5*60);
+            timeleft[player] = std::min(int(timeleft[player].load()+20), maxTime());
             notify(All,ClockStop,player,quint16(timeleft[player].load()));
         } else {
             notify(player, ClockStop, player, quint16(timeleft[player].load()));
         }
 #else
         if (broadCoast) {
-            timeleft[player] = std::min(int(timeleft[player]+20), 5*60);
+            timeleft[player] = std::min(int(timeleft[player]+20), maxTime());
             notify(All,ClockStop,player,quint16(timeleft[player]));
         } else {
             notify(player, ClockStop, player, quint16(timeleft[player]));
@@ -680,9 +680,9 @@ void BattleBase::endBattle(int result, int winner, int loser)
         if (!tieMessage[Player2].isEmpty()) {
             notify(All, EndMessage, Player2, tieMessage[Player2]);
         }
+        callp(BP::battleEnded);
         exit();
-    }
-    if (result == Win || result == Forfeit) {
+    } else if (result == Win || result == Forfeit) {
         notify(All, BattleEnd, winner, qint8(result));
         if (!winMessage[winner].isEmpty()) {
             notify(All, EndMessage, winner, winMessage[winner]);
@@ -692,6 +692,7 @@ void BattleBase::endBattle(int result, int winner, int loser)
         }
 
         emit battleFinished(publicId(), result, id(winner), id(loser));
+        callp(BP::battleEnded);
         exit();
     }
 }
@@ -854,8 +855,12 @@ void BattleBase::playerForfeit(int forfeiterId)
     if (finished()) {
         return;
     }
+
     forfeiter() = spot(forfeiterId);
-    notify(All, BattleEnd, opponent(forfeiter()), qint8(Forfeit));
+    stopClock(opponent(forfeiter()));
+    //Already done by the server itself
+    /*notify(All, BattleEnd, opponent(forfeiter()), qint8(Forfeit));*/
+    callp(BP::battleEnded);
 }
 
 
@@ -980,6 +985,16 @@ bool BattleBase::validChoice(const BattleChoice &b)
                 int p2 = this->player(i);
                 if (i != b.slot() && p2 == player && couldMove[i] && hasChoice[i] == false && choice(i).attackingChoice()
                         && choice(i).mega()) {
+                    return false;
+                }
+            }
+        }
+        /* And the copy/paste for ZMoves */
+        if (b.zmove()) {
+            for (int i = 0; i < numberOfSlots(); i++) {
+                int p2 = this->player(i);
+                if (i != b.slot() && p2 == player && couldMove[i] && hasChoice[i] == false && choice(i).attackingChoice()
+                        && choice(i).zmove()) {
                     return false;
                 }
             }
@@ -1213,6 +1228,11 @@ void BattleBase::battleChat(int id, const QString &str)
 void BattleBase::spectatingChat(int id, const QString &str)
 {
     notify(All, SpectatorChat, id, qint32(id), str);
+}
+
+void BattleBase::sendMessage(int id, const QString &type, const QString &content)
+{
+    notify(id, Notice, id, type, content);
 }
 
 void BattleBase::sendMoveMessage(int move, int part, int src, int type, int foe, int other, const QString &q)
@@ -1453,15 +1473,6 @@ void BattleBase::BasicPokeInfo::init(const PokeBattle &p, Pokemon::gen gen)
     level = p.level();
     substituteLife = 0;
     lastMoveUsed = 0;
-
-    if (gen <= 1) {
-        if (p.status() == Pokemon::Paralysed) {
-            stats[Speed] /= 4;
-        } else if (p.status() == Pokemon::Burnt) {
-            /* Burn reduction is at attack time */
-            //stats[Attack] /= 2;
-        }
-    }
 }
 
 void BattleBase::BasicMoveInfo::reset()
@@ -1955,6 +1966,7 @@ bool BattleBase::testFail(int player)
 {
     if (turnMem(player).failed() == true) {
         pokeMemory(player).remove("ProteanActivated");
+        pokeMemory(player)["LastFailedTurn"] = turn();
         /* Silently or not ? */
         notify(All, Failed, player, !turnMem(player).failingMessage());
         return true;
@@ -2044,28 +2056,47 @@ int BattleBase::repeatNum(int player)
 
 void BattleBase::testCritical(int player, int target)
 {
-    (void) target;
-
-    /* In RBY, Focus Energy reduces crit by 75%; in statium, it's * 4 */
-    int up (1), down(1);
-    if (tmove(player).critRaise & 1) {
-        up *= 8;
-    }
-    if (tmove(player).critRaise & 2) {
-        if (gen() == Gen::RedBlue || gen() == Gen::Yellow) {
-            down = 4;
-        } else {
-            up *= 4;
-        }
-    }
-    PokeFraction critChance(up, down);
-    int randnum = randint(512);
     int baseSpeed = PokemonInfo::BaseStats(fpoke(player).id, gen()).baseSpeed();
     //Transformed Pokemon use the original form's base speed.
     if (pokeMemory(slot(player)).contains("PreTransformPoke")) {
         baseSpeed = PokemonInfo::BaseStats(PokemonInfo::Number(pokeMemory(slot(player)).value("PreTransformPoke").toString()), gen()).baseSpeed();;
     }
-    bool critical = randnum < std::min(510, baseSpeed * critChance);
+
+    bool critical = false;
+    (void) target;
+
+    if (!isStadium()) {
+        // In RBY, Focus Energy reduces crit by 75%
+        int up (1), down(1);
+        if (tmove(player).critRaise & 1) {
+            up *= 8;
+        }
+        if (tmove(player).critRaise & 2) {
+            if (gen() == Gen::RedBlue || gen() == Gen::Yellow) {
+                down = 4;
+            } else {
+                up *= 4;
+            }
+        }
+
+        PokeFraction critChance(up, down);
+        int randnum = randint(512);
+        critical = randnum < std::min(510, baseSpeed * critChance);
+    }
+    else {
+        int ch = (baseSpeed + 76) >> 2;
+
+        if (tmove(player).critRaise & 2) // Focus Energy
+            ch = (ch << 2) + 160;
+        else ch = ch << 1;
+
+        if (tmove(player).critRaise & 1) // Move with high crit ratio
+            ch = ch << 2;
+        else ch = ch >> 1;
+
+        int randnum = randint(256); // randint [0; 255]
+        critical = randnum < std::min(255, ch); // highest possible crit chance is 255/256
+    }
 
     if (critical) {
         turnMem(player).add(TM::CriticalHit);
@@ -2446,3 +2477,9 @@ bool BattleBase::isStadium() const
 {
     return gen() == Gen::Stadium || gen() == Gen::StadiumWithTradebacks;
 }
+
+int BattleBase::maxTime() const
+{
+    return rated() ? 180 : 300;
+}
+

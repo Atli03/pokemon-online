@@ -62,7 +62,7 @@ QHash<int, QStringList> ItemInfo::m_BerryMessages;
 QHash<int,int> ItemInfo::m_Powers;
 QHash<int,int> ItemInfo::m_BerryPowers;
 QHash<int,int> ItemInfo::m_BerryTypes;
-QHash<int, bool> ItemInfo::m_UsefulItems, ItemInfo::m_UsefulBerries;
+QSet<int> ItemInfo::m_UsefulItems, ItemInfo::m_UsefulBerries;
 QVector<QSet<int> > ItemInfo::m_GenItems;
 QHash<int,QString> ItemInfo::m_ItemDesc;
 QHash<int,QString> ItemInfo::m_BerryDesc;
@@ -79,7 +79,7 @@ QString NatureInfo::m_Directory;
 QHash<int, QString> CategoryInfo::m_Names;
 QString CategoryInfo::m_Directory;
 
-QHash<int,QString> AbilityInfo::m_Names, AbilityInfo::m_Desc, AbilityInfo::m_BattleDesc;
+QHash<int,QString> AbilityInfo::m_Names, AbilityInfo::m_BattleDesc; //AbilityInfo::m_Desc;
 QString AbilityInfo::m_Directory;
 QVector<QHash<int,AbilityInfo::Effect> > AbilityInfo::m_Effects;
 QHash<int, QStringList> AbilityInfo::m_Messages;
@@ -1096,12 +1096,24 @@ int PokemonInfo::Gender(const Pokemon::uniqueId &pokeid)
 
 bool PokemonInfo::IsAesthetic(Pokemon::uniqueId id)
 {
-    return m_AestheticFormes.contains(id);
+    /*For Pokemon with identical movesets, essentially Aesthetic forms*/
+    return m_Options.value(id).contains('A');
+}
+bool PokemonInfo::IsDifferent(Pokemon::uniqueId id)
+{
+    /*Use to escape Aesthetic for pokemon tiered/usage tracked differently.
+      A pokemon doesn't get the D if it doesnt have the A */
+    return m_Options.value(id).contains('D');
+}
+bool PokemonInfo::IsAlolan(Pokemon::uniqueId id)
+{
+    return m_Options.value(id).contains('L');
 }
 
 Pokemon::uniqueId PokemonInfo::NonAestheticForme(Pokemon::uniqueId id)
 {
-    return IsAesthetic(id) ? OriginalForme(id) : id;
+    //This is used in Tiering pokemon. Different = tiered differently
+    return IsDifferent(id) ? id : OriginalForme(id);
 }
 
 QPixmap PokemonInfo::Picture(const QString &url)
@@ -1181,8 +1193,10 @@ QPixmap PokemonInfo::Picture(const Pokemon::uniqueId &pokeid, Pokemon::gen gen, 
         file = QString("heartgold-soulsilver/%2%4%3%1.png").arg(pokeid.toString(), back?"back/":"", (gender==Pokemon::Female)?"female/":"", shiny?"shiny/":"");
     else if (gen.num == 5)
         file = QString("black-white/%2%4%3%1.png").arg(pokeid.toString(), back?"back/":"", (gender==Pokemon::Female)?"female/":"", shiny?"shiny/":"");
-    else
+    else if (gen.num == 6)
         file = QString("x-y/%2%4%3%1.png").arg(pokeid.toString(), back?"back/":"", (gender==Pokemon::Female)?"female/":"", shiny?"shiny/":"");
+    else
+        file = QString("s-m/%2%4%3%1.png").arg(pokeid.toString(), back?"back/":"", (gender==Pokemon::Female)?"female/":"", shiny?"shiny/":"");
 
     QPixmap ret;
 
@@ -1203,16 +1217,19 @@ QPixmap PokemonInfo::Picture(const Pokemon::uniqueId &pokeid, Pokemon::gen gen, 
         if (shiny) {
             return PokemonInfo::Picture(pokeid, gen, gender, false, back);
         }
-        if (gen.num == 1) {
-            return PokemonInfo::Picture(pokeid, 2, gender, shiny, back);
-        } else if (gen.num == 2) {
-            return PokemonInfo::Picture(pokeid, 3, gender, shiny, back);
-        } else if (gen.num == 3) {
-            return PokemonInfo::Picture(pokeid, 4, gender, shiny, back);
-        } else if (gen.num == 4 || gen.num == 6) {
-            return PokemonInfo::Picture(pokeid, 5, gender, shiny, back);
+        if (back) {
+            return PokemonInfo::Picture(pokeid, gen, gender);
         }
-        return ret;
+
+        switch(gen.num) {
+            case 7: return PokemonInfo::Picture(pokeid, 6, gender, shiny, back); break;
+            case 6: return PokemonInfo::Picture(pokeid, 5, gender, shiny, back); break;
+            case 5: return PokemonInfo::Picture(pokeid, 4, gender, shiny, back); break;
+            case 4: return PokemonInfo::Picture(pokeid, 3, gender, shiny, back); break;
+            case 3: return PokemonInfo::Picture(pokeid, 2, gender, shiny, back); break;
+            case 2: return PokemonInfo::Picture(pokeid, 1, gender, shiny, back); break;
+            default: return ret;
+        }
     }
 
     ret.loadFromData(data, file.section(".", -1).toLatin1().data());
@@ -1786,11 +1803,12 @@ void MoveInfo::Gen::load(const QString &dir, Pokemon::gen gen)
     fill_double(statboost, path("statboost.txt"));
     fill_double(statrate, path("statrate.txt"));
     fill_int_char(power, path("power.txt"));
+    fill_int_char(zpower, path("zpower.txt"));
     fill_int_char(pp, path("pp.txt"));
     fill_int_char(priority, path("priority.txt"));
     fill_int_char(range, path("range.txt"));
     fill_int_char(recoil, path("recoil.txt"));
-    fill_int_char(status, path("status.txt"));
+    //fill_int_char(status, path("status.txt"));
     fill_int_char(type, path("type.txt"));
     fill_int_bool(kingRock, path("king_rock.txt"));
 
@@ -2002,9 +2020,14 @@ QString MoveInfo::Description(int movenum, Pokemon::gen g)
     return r;
 }
 
-int MoveInfo::Power(int movenum, Pokemon::gen g)
+int MoveInfo::Power(int movenum, Pokemon::gen gen)
 {
-    move_find(power, movenum, g);
+    move_find(power, movenum, gen);
+}
+
+int MoveInfo::ZPower(int movenum, Pokemon::gen gen)
+{
+    move_find(zpower, movenum, gen);
 }
 
 QString MoveInfo::PowerS(int movenum, Pokemon::gen gen)
@@ -2081,6 +2104,88 @@ int MoveInfo::Flags(int movenum, Pokemon::gen g)
     move_find(flags, movenum, g);
 }
 
+QString MoveInfo::FlagsS(int movenum, Pokemon::gen g)
+{
+    int p = MoveInfo::Flags(movenum, g);
+
+    QStringList ret;
+    //Space is very limited here. Only displaying quick blurbs on common thing
+    //ChargeFlag, RechargeFlag, FlyingFlag- unused
+    //MemorableFlag- Too common
+    //MagicCoatableFlag- Too long of a description
+    //FarReachFlag- no one really plays Triples
+
+    //Not a perfect filter but it should help eliminate a lot of noise
+    int mv = MoveInfo::Target(movenum, g);
+    QStringList temp;
+    if (mv != Move::PartnerOrUser
+            && mv != Move::User
+            && mv != Move::Partner
+            && mv != Move::TeamSide
+            && mv != Move::TeamParty
+            && mv != Move::Field) {
+        if (!(p & Move::ProtectableFlag)) {
+            temp.push_back(QObject::tr("Protect"));
+        }
+        if (p & Move::MischievousFlag) {
+            temp.push_back(QObject::tr("Substitute"));
+        }
+        switch(temp.length()) {
+            case 2: ret.push_back(QObject::tr("Bypasses %0 & %1").arg(temp[0]).arg(temp[1])); break;
+            case 1: ret.push_back(QObject::tr("Bypasses %0").arg(temp[0])); break;
+        }
+    }
+    if (g >= 2) {
+        if (p & Move::ContactFlag) {
+            ret.push_back(QObject::tr("Contact"));
+        }
+        if (p & Move::UnthawingFlag) {
+            ret.push_back(QObject::tr("Thaws User"));
+        }
+    }
+    if (g >= 3) {
+        if (p & Move::SoundFlag) {
+            ret.push_back(QObject::tr("Sound"));
+        }
+        if (p & Move::SnatchableFlag) {
+            ret.push_back(QObject::tr("Snatchable"));
+        }
+    }
+    if (g >= 4) {
+        if (p & Move::PunchFlag) {
+            ret.push_back(QObject::tr("Punch"));
+        }
+        if (p & Move::HealingFlag) {
+            ret.push_back(QObject::tr("Healing"));
+        }
+    }
+    if (g >= 6) {
+        if (p & Move::PowderFlag) {
+            ret.push_back(QObject::tr("Powder"));
+        }
+        if (p & Move::BallFlag) {
+            ret.push_back(QObject::tr("Bullet"));
+        }
+        if (p & Move::LaunchFlag) {
+            ret.push_back(QObject::tr("Launching"));
+        }
+        if (p & Move::BiteFlag) {
+            ret.push_back(QObject::tr("Bite"));
+        }
+    }
+    if (g >= 7) {
+        if (p & Move::DanceFlag) {
+            ret.push_back(QObject::tr("Dance"));
+        }
+    }
+    if (ret.length() > 0) {
+        return ret.join(", ");
+    } else {
+        return "--";
+    }
+}
+
+
 bool MoveInfo::Exists(int movenum, Pokemon::gen g)
 {
     return m_GenMoves[g.num-GenInfo::GenMin()].contains(movenum);
@@ -2127,33 +2232,33 @@ QString MoveInfo::TargetS(int movenum, Pokemon::gen gen)
 
     switch(p) {
         case Move::ChosenTarget:
-            return QString("Single Target");
+            return QObject::tr("Single Target");
         case Move::PartnerOrUser:
-            return QString("Self or Ally");
+            return QObject::tr("Self or Ally");
         case Move::Partner:
-            return QString("Single Ally");
+            return QObject::tr("Single Ally");
         case Move::MeFirstTarget:
-            return QString("Single Target");
+            return QObject::tr("Single Target");
         case Move::AllButSelf:
-            return QString("All But Self");
+            return QObject::tr("All But Self");
         case Move::Opponents:
-            return QString("Adjacent Foes");
+            return QObject::tr("Adjacent Foes");
         case Move::TeamParty:
-            return QString("User's Team");
+            return QObject::tr("User's Team");
         case Move::User:
-            return QString("Self");
+            return QObject::tr("Self");
         case Move::All:
-            return QString("All");
+            return QObject::tr("All");
         case Move::RandomTarget:
-            return QString("Random");
+            return QObject::tr("Random");
         case Move::Field:
-            return QString("Field");
+            return QObject::tr("Field");
         case Move::OpposingTeam:
-            return QString("All Foes");
+            return QObject::tr("All Foes");
         case Move::TeamSide:
-            return QString("All Allies");
+            return QObject::tr("All Allies");
         case Move::IndeterminateTarget:
-            return QString("Self");
+            return QObject::tr("Self");
         default:
             return QString("---");
     }
@@ -2179,10 +2284,10 @@ int MoveInfo::Status(int movenum, Pokemon::gen g)
     move_find(causedEffect, movenum, g);
 }
 
-int MoveInfo::StatusKind(int movenum, Pokemon::gen g)
+/*int MoveInfo::StatusKind(int movenum, Pokemon::gen g)
 {
     move_find(status, movenum, g);
-}
+}*/
 
 QString MoveInfo::MoveMessage(int moveeffect, int part)
 {
@@ -2205,6 +2310,19 @@ QSet<int> MoveInfo::Moves(Pokemon::gen gen)
 QString MoveInfo::path(const QString &file)
 {
     return m_Directory+file;
+}
+
+int MoveInfo::DanceType (Pokemon::uniqueId poke) {
+    int type = Pokemon::Normal;
+    if (PokemonInfo::OriginalForme(poke) == Pokemon::Oricorio) {
+        switch(poke.toPokeRef()) {
+            case Pokemon::Oricorio: type = Pokemon::Fire; break;
+            case Pokemon::Oricorio_Pau: type = Pokemon::Psychic; break;
+            case Pokemon::Oricorio_Sensu: type = Pokemon::Ghost; break;
+            case Pokemon::Oricorio_PomPom: type = Pokemon::Electric; break;
+        }
+    }
+    return type;
 }
 
 #undef move_find
@@ -2241,8 +2359,8 @@ void ItemInfo::retranslate()
 
 void ItemInfo::loadGenData()
 {
-    fill_int_bool(m_UsefulItems, path("item_useful.txt"));
-    fill_int_bool(m_UsefulBerries, path("berry_useful.txt"));
+    fill_container_with_file(m_UsefulItems, path("item_useful.txt"));
+    fill_container_with_file(m_UsefulBerries, path("berry_useful.txt"));
 
     m_GenItems.clear();
     m_GenItems.resize(GenInfo::NumberOfGens());
@@ -2551,9 +2669,19 @@ bool ItemInfo::isPlate(int itemnum)
     return ((itemnum >= 185 && itemnum <= 202 && itemnum != 190 && itemnum != 200) || itemnum==330);
 }
 
+bool ItemInfo::isMemoryChip(int itemnum)
+{
+    return itemnum >= 344 && itemnum <= 360;
+}
+
 bool ItemInfo::isMegaStone(int itemnum)
 {
     return itemnum >= 2000 && itemnum < 3000;
+}
+
+bool ItemInfo::isZCrystal(int itemnum)
+{
+    return itemnum >= 3000 && itemnum < 4000;
 }
 
 bool ItemInfo::isPrimalStone(int itemnum)
@@ -2563,12 +2691,12 @@ bool ItemInfo::isPrimalStone(int itemnum)
 
 bool ItemInfo::isDrive(int itemnum)
 {
-    return itemnum == Item::DouseDrive || itemnum == Item::BurnDrive || itemnum == Item::ChillDrive || itemnum == Item::ShockDrive;
+    return itemnum >= 227 && itemnum <= 230;
 }
 
 bool ItemInfo::isGem(int itemnum)
 {
-    return itemnum == Item::NormalGem || itemnum == Item::FightGem || itemnum == Item::SteelGem || itemnum == Item::PsychicGem || itemnum == Item::DarkGem || itemnum == Item::FireGem || itemnum == Item::WaterGem || itemnum == Item::ElectricGem || itemnum == Item::IceGem || itemnum == Item::FlightGem || itemnum == Item::PoisonGem || itemnum == Item::GhostGem || itemnum == Item::BugGem || itemnum == Item::GrassGem || itemnum == Item::RockGem || itemnum == Item::EarthGem || itemnum == Item::DragonGem;
+    return itemnum >= 243 && itemnum <= 259;
 }
 
 bool ItemInfo::isMail(int itemnum)
@@ -2579,9 +2707,9 @@ bool ItemInfo::isMail(int itemnum)
 bool ItemInfo::isUseful(int itemnum)
 {
     if (isBerry(itemnum)) {
-        return m_UsefulBerries.isEmpty() || m_UsefulBerries.value(itemnum - 8000) == true;
+        return m_UsefulBerries.isEmpty() || m_UsefulBerries.contains(itemnum - 8000);
     } else {
-        return m_UsefulItems.isEmpty() || m_UsefulItems.value(itemnum) == true;
+        return m_UsefulItems.isEmpty() || m_UsefulItems.contains(itemnum);
     }
 }
 
@@ -2589,6 +2717,24 @@ int ItemInfo::PlateType(int itemnum)
 {
     const auto &effects = Effects(itemnum, GenInfo::GenMax());
     if (effects.size() == 0 || !isPlate(itemnum)) {
+        return 0;
+    }
+    return effects.front().args.toInt();
+}
+
+int ItemInfo::MemoryChipType(int itemnum)
+{
+    const auto &effects = Effects(itemnum, GenInfo::GenMax());
+    if (effects.size() == 0 || !isMemoryChip(itemnum)) {
+        return 0;
+    }
+    return effects.front().args.toInt();
+}
+
+int ItemInfo::CrystalMove(int itemnum)
+{
+    const auto &effects = Effects(itemnum, GenInfo::GenMax());
+    if (effects.size() == 0 || !isZCrystal(itemnum)) {
         return 0;
     }
     return effects.front().args.toInt();
@@ -3080,7 +3226,7 @@ void AbilityInfo::loadMessages()
 void AbilityInfo::loadNames()
 {
     fill_int_str(m_Names, path("abilities.txt"), true);
-    fill_int_str(m_Desc, path("ability_desc.txt"), true);
+    //fill_int_str(m_Desc, path("ability_desc.txt"), true);
     fill_int_str(m_BattleDesc, path("ability_battledesc.txt"), true);
 }
 
@@ -3142,10 +3288,10 @@ AbilityInfo::Effect AbilityInfo::Effects(int abnum, Pokemon::gen gen) {
     return m_Effects[gen.num-GEN_MIN].value(abnum);
 }
 
-QString AbilityInfo::Desc(int ab)
+/*QString AbilityInfo::Desc(int ab)
 {
     return m_Desc[ab];
-}
+}*/
 
 QString AbilityInfo::EffectDesc(int abnum)
 {
@@ -3188,7 +3334,7 @@ int AbilityInfo::NumberOfAbilities(Pokemon::gen g)
 {
     int total = m_Names.size();
 
-    if (g == GenInfo::GenMax()) {
+    if (g.num == GenInfo::GenMax()) {
         return total;
     } else {
         int hc;

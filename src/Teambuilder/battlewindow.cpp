@@ -108,10 +108,10 @@ BattleWindow::BattleWindow(int battleId, const PlayerInfo &me, const PlayerInfo 
     setWindowTitle(tr("Battling against %1").arg(name(info().opponent)));
 
     myclose->setText(tr("&Forfeit"));
-    mylayout->addWidget(mytab = new QTabWidget(), 2, 0, 1, 4);
+    mylayout->addWidget(mytab = new QTabWidget(), 2, 0, 1, 5);
     mylayout->addWidget(mycancel = new QPushButton(tr("&Cancel")), 3, 0);
     mylayout->addWidget(myattack = new QPushButton(tr("&Attack")), 3, 1);
-    mylayout->addWidget(myswitch = new QPushButton(tr("&Switch Pokemon")), 3, 2, 1, 2);
+    mylayout->addWidget(myswitch = new QPushButton(tr("&Switch Pokemon")), 3, 2, 1, 3);
     mytab->setObjectName("Modified");
 
     mytab->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -397,6 +397,9 @@ void BattleWindow::attackClicked(int zone)
             if (myazones[n]->megaevo->isChecked()) {
                 b.setMegaEvo(true);
             }
+            if (myazones[n]->zmove->isChecked()) {
+                b.setZMove(true);
+            }
 
             if (!data().multiples()) {
                 info().done[n] = true;
@@ -487,6 +490,8 @@ void BattleWindow::goToNextChoice()
                 int snum = data().slotNum(slot);
                 myazones[snum]->megaevo->setVisible(info().choices[n].mega);
                 myazones[snum]->megaevo->setChecked(false);
+                myazones[snum]->zmove->setVisible(info().choices[n].zmove);
+                myazones[snum]->zmove->setChecked(false);
                 if (info().choices[n].attacksAllowed == false) {
                     myattack->setEnabled(false);
                     for (int i = 0; i < 4; i ++) {
@@ -1010,6 +1015,13 @@ AttackZone::AttackZone(const PokeProxy &poke, Pokemon::gen gen)
     l->addWidget(megaevo, 2, 0, 1, 2);
     megaevo->setVisible(false);
 
+    zmove = new QPushButton(this);
+    zmove->setText(tr("Z Move"));
+    zmove->setCheckable(true);
+    zmove->setObjectName("MegaEvo");
+    l->addWidget(zmove, 3, 0, 1, 2);
+    zmove->setVisible(false);
+
     connect(mymapper, SIGNAL(mapped(int)), SIGNAL(clicked(int)));
 }
 
@@ -1056,6 +1068,10 @@ void OldAttackButton::updateAttack(const BattleMove &b, const PokeProxy &p, Poke
         type = ItemInfo::DriveType(p.item());
     } else if (b.num() == Move::NaturalGift && ItemInfo::isBerry(p.item())) {
         type = ItemInfo::BerryType(p.item());
+    } else if (b.num() == Move::Multi_Attack && ItemInfo::isMemoryChip(p.item())) {
+        type = ItemInfo::MemoryChipType(p.item());
+    } else if (b.num() == Move::RevelationDance) {
+        type = MoveInfo::DanceType(p.num());
     }
     /*QString model = QString("db/BattleWindow/Buttons/%1%2.png").arg(type);
     changePics(model.arg("D"), model.arg("H"), model.arg("C"));*/

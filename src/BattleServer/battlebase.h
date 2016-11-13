@@ -151,6 +151,7 @@ public:
     void battleChoiceReceived(int id, const BattleChoice &b);
     void battleChat(int id, const QString &str);
     void spectatingChat(int id, const QString &str);
+    void sendMessage(int id, const QString &type, const QString &content);
 
     virtual int getStat(int poke, int stat) = 0;
     virtual void sendPoke(int player, int poke, bool silent = false) = 0;
@@ -374,6 +375,7 @@ public:
         signed char priority;
         int flags;
         int power; /* unsigned char in the game, but can be raised by effects */
+        int zpower;
         int accuracy; /* Same */
         char type;
         char category; /* Physical/Special/Other */
@@ -467,7 +469,7 @@ public:
     /* if special occurence = true, then it means a move like mimic/copycat/metronome has been used. In that case attack does not
     represent the moveslot but rather than that it represents the move num, plus PP will not be lost */
     virtual void useAttack(int player, int attack, bool specialOccurence = false, bool notify = true) = 0;
-    virtual bool testStatus(int player);
+    virtual bool testStatus(int player) = 0;
 
     void healStatus(int player, int status);
     bool isConfused(int player);
@@ -510,6 +512,7 @@ public:
     void changeStatMod(int player, int stat, int newstat);
 
     bool isStadium() const;
+    int maxTime() const;
 };
 
 #endif // BATTLEBASE_H

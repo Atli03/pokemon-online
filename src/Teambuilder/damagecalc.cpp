@@ -48,6 +48,7 @@ DamageCalc::DamageCalc(int gen, QWidget *parent) :
 
     foreach (QSpinBox *w, mine) {
         connect(w, SIGNAL(valueChanged(int)), this, SLOT(updateMyPokeStats()));
+        connect(w, SIGNAL(valueChanged(int)), this, SLOT(updateMoveInfo()));
     }
 
     QList<QSpinBox *> opps;
@@ -60,6 +61,7 @@ DamageCalc::DamageCalc(int gen, QWidget *parent) :
 
     foreach (QSpinBox *w, opps) {
         connect(w, SIGNAL(valueChanged(int)), this, SLOT(updateOPokeStats()));
+        connect(w, SIGNAL(valueChanged(int)), this, SLOT(updateMoveInfo()));
     }
 
     connect(ui->mypoke, SIGNAL(currentIndexChanged(int)), this, SLOT(updateMyPoke()));
@@ -73,6 +75,15 @@ DamageCalc::DamageCalc(int gen, QWidget *parent) :
 
     connect(ui->mygender, SIGNAL(currentIndexChanged(int)), this, SLOT(updateMyPokePic()));
     connect(ui->ogender, SIGNAL(currentIndexChanged(int)), this, SLOT(updateOPokePic()));
+
+    // Update move info after every change to automatically calculate BP
+    // for moves that have varying BP
+    connect(ui->mypoke, SIGNAL(currentIndexChanged(int)), this, SLOT(updateMoveInfo()));
+    connect(ui->opoke, SIGNAL(currentIndexChanged(int)), this, SLOT(updateMoveInfo()));
+    connect(ui->mynature, SIGNAL(currentIndexChanged(int)), this, SLOT(updateMoveInfo()));
+    connect(ui->onature, SIGNAL(currentIndexChanged(int)), this, SLOT(updateMoveInfo()));
+    connect(ui->mylevel, SIGNAL(valueChanged(int)), this, SLOT(updateMoveInfo()));
+    connect(ui->olevel, SIGNAL(valueChanged(int)), this, SLOT(updateMoveInfo()));
 
     connect(ui->calculate, SIGNAL(clicked()), this, SLOT(calculate()));
 }
@@ -104,8 +115,11 @@ void DamageCalc::setupCalc(int gen)
     QString ostatus = ui->ostatus->currentText();
     QString ogender = ui->ogender->currentText();
 
+    QStringList moveNames = MoveInfo::Names(pgen);
+    moveNames.sort();
+
     ui->move->clear();
-    ui->move->addItems(MoveInfo::Names(pgen));
+    ui->move->addItems(moveNames);
 
     ui->movetype->clear();
     ui->movetype->addItems(TypeInfo::Names(pgen));
@@ -154,6 +168,7 @@ void DamageCalc::setupCalc(int gen)
     ui->opoke->addItems(pokeNames);
 
     QStringList abilityNames = AbilityInfo::Names(pgen);
+    abilityNames.sort();
 
     ui->myability->addItems(abilityNames);
     ui->oability->addItems(abilityNames);
@@ -236,6 +251,19 @@ void DamageCalc::setupCalc(int gen)
     ui->ogenderlabel->setVisible(gen > 2);
     ui->ogender->setVisible(gen > 2);
 
+    ui->watersport->setVisible(gen > 3);
+    ui->mudsport->setVisible(gen > 3);
+    ui->fusionused->setVisible(gen > 4);
+    ui->mefirst->setVisible(gen > 3);
+    ui->charged->setVisible(gen > 2);
+    ui->helpinghand->setVisible(gen > 2);
+    ui->myflowergift->setVisible(gen > 3);
+    ui->oflowergift->setVisible(gen > 3);
+    ui->friendguard->setVisible(gen > 4);
+    ui ->wonderroom->setVisible(gen > 4);
+    ui->allyfainted->setVisible(gen > 4);
+    ui->multitarget->setVisible(gen > 2);
+
     updateMyPoke();
     updateOPoke();
     updateMoveInfo();
@@ -265,12 +293,12 @@ void DamageCalc::updateMyPokeStats()
     spdef = PokemonInfo::BoostedStat(spdef, ui->myspdefboost->value());
     spd = PokemonInfo::BoostedStat(spd, ui->myspdboost->value());
 
-    ui->myhpstat->setText(QString::number(hp));
-    ui->myatkstat->setText(QString::number(atk));
-    ui->mydefstat->setText(QString::number(def));
-    ui->myspatkstat->setText(QString::number(spatk));
-    ui->myspdefstat->setText(QString::number(spdef));
-    ui->myspdstat->setText(QString::number(spd));
+    ui->myhpstat->setNum(hp);
+    ui->myatkstat->setNum(atk);
+    ui->mydefstat->setNum(def);
+    ui->myspatkstat->setNum(spatk);
+    ui->myspdefstat->setNum(spdef);
+    ui->myspdstat->setNum(spd);
 }
 
 void DamageCalc::updateOPokeStats()
@@ -291,18 +319,78 @@ void DamageCalc::updateOPokeStats()
     spdef = PokemonInfo::BoostedStat(spdef, ui->ospdefboost->value());
     spd = PokemonInfo::BoostedStat(spd, ui->ospdboost->value());
 
-    ui->ohpstat->setText(QString::number(hp));
-    ui->oatkstat->setText(QString::number(atk));
-    ui->odefstat->setText(QString::number(def));
-    ui->ospatkstat->setText(QString::number(spatk));
-    ui->ospdefstat->setText(QString::number(spdef));
-    ui->ospdstat->setText(QString::number(spd));
+    ui->ohpstat->setNum(hp);
+    ui->oatkstat->setNum(atk);
+    ui->odefstat->setNum(def);
+    ui->ospatkstat->setNum(spatk);
+    ui->ospdefstat->setNum(spdef);
+    ui->ospdstat->setNum(spd);
 }
 
 void DamageCalc::updateMoveInfo()
 {
     int move = MoveInfo::Number(ui->move->currentText());
     int bp = MoveInfo::Power(move, m_currentGen);
+    Pokemon::uniqueId mypokenumber = PokemonInfo::Number(ui->mypoke->currentText());
+    Pokemon::uniqueId opokenumber = PokemonInfo::Number(ui->opoke->currentText());
+    if (move == Move::Frustration || move == Move::Return) {
+        bp = 102; // Automatically set max possible BP
+    }
+
+    else if (move == Move::GyroBall) {
+        bp = 25 * ((ui->ospdstat->text()).toInt() / (ui->myspdstat->text()).toInt());
+        if (bp > 150) {
+            bp = 150;
+        } else if (bp == 0) {
+            bp = 1;
+        }
+    } else if (move == Move::WringOut || move == Move::CrushGrip) {
+        int omaxhp = PokemonInfo::FullStat(PokemonInfo::Number(ui->opoke->currentText()), m_currentGen, NatureInfo::Number(ui->onature->currentText()), 0, ui->olevel->value(), ui->ohpiv->value(), ui->ohpev->value());
+        bp = 1 + 120 * ui->ohpstat->text().toInt() / omaxhp;
+        if (bp > 121) {
+            bp = 121;
+        }
+    }
+
+    if (move == Move::GrassKnot || (move == Move::LowKick && m_currentGen.num != 1)) {
+        int weight = PokemonInfo::Weight(opokenumber);
+        if (weight < 100) {
+            bp = 20;
+        } else if (weight < 250) {
+            bp = 40;
+        } else if (weight < 500) {
+            bp = 60;
+        } else if (weight < 1000) {
+            bp = 80;
+        } else if (weight < 2000) {
+            bp = 100;
+        } else {
+            bp = 120;
+        }
+    }
+
+    if (move == Move::HeavySlam || move == Move::HeatCrash) {
+        int myweight = PokemonInfo::Weight(mypokenumber);
+        int oweight = PokemonInfo::Weight(opokenumber);
+        int ratio = 0;
+        // Missingno's weight is 0 and dividing by 0 is bad!
+        if (opokenumber != 0){
+            ratio = myweight / oweight;
+        }
+
+        if (ratio >= 5) {
+            bp = 120;
+        } else if (ratio == 4) {
+            bp = 100;
+        } else if (ratio == 3) {
+            bp = 80;
+        } else if (ratio == 2) {
+            bp = 60;
+        } else {
+            bp = 40;
+        }
+    }
+
     int type = MoveInfo::Type(move, m_currentGen);
     int category = MoveInfo::Category(move, m_currentGen);
 
@@ -434,7 +522,7 @@ void DamageCalc::calculate()
             myboosts.append(myboost->value());
         } else if (i == 0) {
             mystat = mystat * ui->myhppercent->value() / 100;
-            oboosts.append(0);
+            myboosts.append(0);
         }
 
         mystats.append(mystat);
@@ -466,6 +554,7 @@ void DamageCalc::calculate()
     // 1    0x1000
     // 1.2  0x1333
     // 1.3  0x14CD
+    // 1.33 0x1555
     // 1.5  0x1800
     // 2    0x2000
 
@@ -562,7 +651,7 @@ void DamageCalc::calculate()
     int dmod = 0x1000;
     // -1A. BOOSTS //
     unaware = (myability == Ability::Unaware);
-    if (!unaware && move != Move::ChipAway) {
+    if (!unaware && move != Move::ChipAway && move != Move::DarkestLariat) {
         if (oboosts[2] > 0 && crit) {
             oboosts[2] = 0;
         }
@@ -684,7 +773,7 @@ void DamageCalc::calculate()
     // 0N. GEN 4 ORBS //
     if ((mypoke == Pokemon::Palkia && myitem == Item::LustrousOrb && (type == Type::Water || type == Type::Dragon))
             || (mypoke == Pokemon::Dialga && myitem == Item::AdamantOrb && (type == Type::Steel || type == Type::Dragon))
-            || (mypoke == Pokemon::Giratina_O && myitem == Item::GriseousOrb && (type == Type::Ghost || type == Type::Dragon))) {
+            || (mypoke == Pokemon::Giratina_Origin && myitem == Item::GriseousOrb && (type == Type::Ghost || type == Type::Dragon))) {
         bmod = chainmod(bmod, 0x1333);
     }
     // 0O. GEMS // ARE TRULY OUTRAGEOUS
@@ -720,7 +809,7 @@ void DamageCalc::calculate()
         bmod = chainmod(bmod, 0x1800);
     }
     // 0V. SOLARBEAR // i dont want to fix this solarbear is cool
-    if (move == Move::SolarBeam && (weather != Weather::Sunny && weather != Weather::NormalWeather)) {
+    if ((move == Move::SolarBeam || move == Move::SolarBlade) && (weather != Weather::Sunny && weather != Weather::NormalWeather)) {
         bmod = chainmod(bmod, 0x800);
     }
     // 0W. CHARGE //
@@ -734,6 +823,18 @@ void DamageCalc::calculate()
     // 0Y. SPORTS //
     if ((ui->watersport->isChecked() && type == Type::Fire) || (ui->mudsport->isChecked() && type == Type::Electric)) {
         bmod = chainmod(bmod, 0x548);
+    }
+    // 0Z. MEGA LAUNCHER //
+    if (myability == Ability::MegaLauncher && MoveInfo::Flags(move, m_currentGen) & Move::LaunchFlag) {
+        bmod = chainmod(bmod, 0x1800);
+    }
+    // 0AA. STRONG JAW //
+    if (myability == Ability::StrongJaw && MoveInfo::Flags(move, m_currentGen) & Move::BiteFlag) {
+        bmod = chainmod(bmod, 0x1800);
+    }
+    // 0AB. TOUGH CLAWS //
+    if (myability == Ability::ToughClaws && MoveInfo::Flags(move, m_currentGen) & Move::ContactFlag) {
+        bmod = chainmod(bmod, 0x1555);
     }
 
     bp = applymod(bp, bmod);
@@ -832,6 +933,10 @@ void DamageCalc::calculate()
     // 8N. STEAMROLLER ON MINIMIZE // 0x2000
     if (ui->surfondive->isChecked()) {
         fmod = chainmod(fmod, 0x2000);
+    }
+    // 8O. FUR COAT //
+    if (oability == Ability::FurCoat && category == Move::Physical) {
+        fmod = chainmod(fmod, 0x0800);
     }
 
     dmin = applymod(dmin, fmod);
