@@ -1027,9 +1027,19 @@ namespace Pokemon
         Graveler_Alolan = Graveler + (1 << 16),
         Golem_Alolan = Golem + (1 << 16),
         Zygarde_10 = Zygarde + (1 << 16),
-        Zygarde_Complete = Zygarde + (2 << 16),
+        Zygarde_10_Incomplete = Zygarde + (2 << 16),
+        Zygarde_50_Incomplete = Zygarde + (3 << 16),
+        Zygarde_Complete = Zygarde + (4 << 16),
         Lycanroc_Midnight = Lycanroc + (1 << 16),
-        Ash_Greninja = Greninja + (1 << 16)
+        Greninja_Unbonded = Greninja + (1 << 16),
+        Ash_Greninja = Greninja + (2 << 16),
+        Pikachu_First_Hat = Pikachu + (7 << 16),
+        Pikachu_Second_Hat = Pikachu + (8 << 16),
+        Pikachu_Third_Hat = Pikachu + (9 << 16),
+        Pikachu_Fourth_Hat = Pikachu + (10 << 16),
+        Pikachu_Fifth_Hat = Pikachu + (11 << 16),
+        Pikachu_Sixth_Hat = Pikachu + (12 << 16),
+        Minior_Red = Minior + (1 << 16)
     };
 }
 
@@ -1844,6 +1854,20 @@ namespace Type
 
 namespace Ability
 {
+    enum Flags
+    {
+        //can the ability be affected by the following
+        TraceFlag = 1,
+        SkillSwapFlag = 2,
+        RolePlayFlag = 4,
+        GastroAcidFlag = 8,
+        WorrySeedFlag = 16,
+        EntrainmentFlag = 32,
+        MummyFlag = 64,
+        SimpleBeamFlag = 128,
+        ReceiverFlag = 256 //also power of alchemy cause identical ability
+    };
+
     enum Name
     {
         NoAbility,
@@ -2492,6 +2516,17 @@ namespace Weather {
         StrongSun = 5,
         StrongRain = 6,
         StrongWinds = 7
+    };
+}
+
+namespace Terrain {
+    enum Terrain
+    {
+        NoTerrain = 0,
+        ElectricTerrain = 1,
+        GrassyTerrain = 2,
+        MistyTerrain = 3,
+        PsychicTerrain = 4
     };
 }
 

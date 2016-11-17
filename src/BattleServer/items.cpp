@@ -1142,20 +1142,32 @@ struct IMZCrystal : public IM {
         if (tmove(b,s).power > 0) {
             tmove(b,s).power = tmove(b,s).zpower;
         }
+        //UNTESTED: Protect's reduction
+        //UNFINISHED: Special effects for Other type moves
     }
 };
 
 //UNTESTED
 struct IMSeeds : public IM {
     IMSeeds() {
-
+        functions["UponSetup"] = &us;
+        functions["UponReactivation"] = &us;
+        functions["TerrainChange"] = &us;
     }
-};
 
-//UNTESTED
-struct IMAdrenalineOrb : public IM {
-    IMAdrenalineOrb() {
+    static void us(int s, int, BS &b){
+        QStringList args = poke(b,s)["ItemArg"].toString().split('_');
+        int terrainType = args[0].toInt();
+        if (b.terrain == terrainType) {
+            int stat = args[1].toInt();
+            if (b.hasMaximalStatMod(s, stat))
+                return;
 
+            //probably a message here too, even if one isnt in game
+            b.sendItemMessage(36, s, 0, s, b.poke(s).item(), stat);
+            b.disposeItem(s);
+            b.inflictStatMod(s, stat, 1, s, false);
+        }
     }
 };
 
@@ -1204,8 +1216,8 @@ void ItemEffect::init()
     REGISTER_ITEM(68, MemoryChip);
     REGISTER_ITEM(69, ZCrystal);
     REGISTER_ITEM(70, Seeds);
-    REGISTER_ITEM(71, AdrenalineOrb);
-    //72 Protective pads
+    //71 Adrenaline orb message
+    //72 Protective pads message
     /* Trainer items */
     REGISTER_ITEM(1000, StatusHeal);
     REGISTER_ITEM(1001, Potion);

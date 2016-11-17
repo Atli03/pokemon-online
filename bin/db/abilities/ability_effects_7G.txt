@@ -127,7 +127,7 @@
 158 82#Prankster
 159 72#Sand Force
 160 50#Iron Barb
-161 77-555_66091#Zen Mode
+161 77#Zen Mode
 162 75#Victory Star
 163 40#Turbo Blaze
 164 40#TeraVolt
@@ -157,10 +157,11 @@
 191 126-7#Delta Stream
 192 31-2#Full Metal Body
 196 143#SoulHeart
-198 128-12_201#Electric Surge
+198 128-1#Electric Surge
 199 129#Dazzling
 200 130-3#Berserk
 201 131#Battery
+203 138#disguise
 204 132#Fluffy
 205 133#Stamina
 206 134#Triage
@@ -173,9 +174,9 @@
 214 129#Queenly Majesty
 215 141#Battle Bond
 216 142#Receiver
-218 128-13_222#Psychic Surge
-219 128-11_205#Grassy Surge
-220 128-17_208#Misty Surge
+218 128-4#Psychic Surge
+219 128-2#Grassy Surge
+220 128-3#Misty Surge
 221 8-1#Slush Rush
 222 135#Emergency Exit
 224 64-9#Water Bubble

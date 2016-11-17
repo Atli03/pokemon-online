@@ -881,6 +881,12 @@ struct AMIntimidate : public AM {
                 b.sendAbMessage(34,0,s,t);
                 b.inflictStatMod(t,Attack,-1,s);
             }
+
+            if (b.hasWorkingItem(t, Item::AdrenalineOrb)) {
+                b.sendItemMessage(71, t, 0);
+                b.inflictStatMod(t, Speed, 1, t, false);
+                b.disposeItem(t);
+            }
         }
     }
 };
@@ -956,12 +962,23 @@ struct AMMotorDrive : public AM {
 
 struct AMNormalize : public AM {
     AMNormalize() {
+        functions["BeforeTargetList"] = &btl;
         functions["MoveSettings"] = &btl;
+        functions["BasePowerModifier"] = &bpm;
     }
 
     static void btl(int s, int, BS &b) {
-        if (tmove(b,s).type != Type::Curse)
+        //Unconfirmed: Do normally Normal types get buffed too?
+        if (tmove(b,s).type != Type::Curse && tmove(b,s).type != Type::Normal && tmove(b,s).attack != Move::HiddenPower && tmove(b,s).attack != Move::WeatherBall) {
             tmove(b,s).type = Type::Normal;
+            turn(b,s)["Normalized"] = true;
+        }
+    }
+
+    static void bpm(int s, int, BS &b) {
+        if (turn(b,s).value("Normalized").toBool() && b.gen() >= 7) {
+            b.chainBp(s, 0x1333);
+        }
     }
 };
 
@@ -1228,14 +1245,14 @@ struct AMTechnician : public AM {
     }
 };
 
-//UNTESTED
 struct AMThickFat : public AM {
     AMThickFat() {
         functions["FoeDamageFormulaStart"] = &bpfm;
+        functions["BasePowerModifier"] = &bpm;
     }
 
-    static void bpfm (int , int t, BS &b) {
-        QStringList args = poke(b,t)["AbilityArg"].toString().split('_');
+    static void bpfm (int s, int t, BS &b) {
+        QStringList args = poke(b,s)["AbilityArg"].toString().split('_');
         for (int i = 0; i < args.length(); i++) {
             if (args[i].toInt() == tmove(b,t).type) {
                 if (b.gen().num == 3) {
@@ -1246,6 +1263,13 @@ struct AMThickFat : public AM {
                     b.chainAtk(t, 0x800);
                 }
             }
+        }
+    }
+
+    //UNTESTED: Also should boost z moves
+    static void bpm (int s, int, BS &b) {
+        if (b.poke(s).ability() == Ability::WaterBubble && tmove(b, s).type == Pokemon::Water) {
+            b.chainBp(s, 0x2000);
         }
     }
 };
@@ -1283,8 +1307,7 @@ struct AMTrace : public AM {
             int t = opps[i];
             int ab = b.ability(t);
             //Multitype
-            if (b.hasWorkingAbility(t, ab) && ab != Ability::Multitype && ab != Ability::RKSSystem && ab != Ability::Trace && ab != Ability::FlowerGift
-                && !(ab == Ability::Illusion && poke(b,t).contains("IllusionTarget")) && ab != Ability::StanceChange) {
+            if (b.hasWorkingAbility(t, ab) && !(AbilityInfo::abFlags(ab) & Ability::TraceFlag)) {
                 b.sendAbMessage(66,0,s,t,0,ab);
                 b.loseAbility(s);
                 b.acquireAbility(s, ab);
@@ -1510,7 +1533,10 @@ struct AMMummy : public AM {
     }
 
     static void upa(int s, int t, BS &b) {
-        if ( (b.countBackUp(b.player(s)) > 0 || !b.koed(s)) && b.ability(t) != Ability::Mummy && b.ability(t) !=Ability::Multitype && b.ability(t) !=Ability::RKSSystem && !b.koed(t)) {
+        if (AbilityInfo::abFlags(b.ability(t)) & Ability::MummyFlag) {
+            return;
+        }
+        if ( (b.countBackUp(b.player(s)) > 0 || !b.koed(s)) && !b.koed(t)) {
             b.sendAbMessage(47, 0, t);
             b.loseAbility(t);
             b.acquireAbility(t, Ability::Mummy);
@@ -1602,7 +1628,11 @@ struct AMWeakArmor : public AM {
             b.inflictStatMod(s, Defense, -1, s);
         }
         if (!b.hasMaximalStatMod(s, Speed)) {
-            b.inflictStatMod(s, Speed, 1, s);
+            if (b.gen() >= 7) {
+                b.inflictStatMod(s, Speed, 2, s);
+            } else {
+                b.inflictStatMod(s, Speed, 1, s);
+            }
         }
     }
 };
@@ -2236,7 +2266,11 @@ struct AMAerilate : public AM {
 
     static void bpm(int s, int, BS &b) {
         if (turn(b,s).value("Aerilated").toBool()) {
-            b.chainBp(s, 0x14CD);
+            if (b.gen() >= 7) {
+                b.chainBp(s, 0x1333);
+            } else {
+                b.chainBp(s, 0x14CD);
+            }
         }
     }
 };
@@ -2514,7 +2548,7 @@ struct AMGrassPelt : public AM
     }
 
     static void sm (int s, int, BS &b) {
-        if (b.terrain == Type::Grass && b.terrainCount >= 0) {
+        if (b.terrain == BS::GrassyTerrain) {
             turn(b,s)[QString("Stat%1AbilityModifier").arg(Defense)] = 0x1800;
         }
     }
@@ -2619,7 +2653,7 @@ struct AMSurgeSurfer : public AM
     }
 
     static void sm(int s, int, BS &b) {
-        if (b.terrain == Type::Electric && b.terrainCount >= 0) {
+        if (b.terrain == BS::ElectricTerrain) {
             turn(b,s)["Stat5AbilityModifier"] = 0x2000;
         }
     }
@@ -2630,10 +2664,15 @@ struct AMFluffy: public AM {
         functions["BasePowerFoeModifier"] = &bpfm;
     }
 
-    static void bpfm(int , int t, BS &b) {
-        if (b.makesContact(t) && type(b,t) != Pokemon::Fire) {
-            b.chainBp(t, 0x800);
+    static void bpfm(int, int t, BS &b) {
+        if (b.makesContact(t)) {
+            //Contact is reduced
+            //Fire + Contact = nothing changes
+            if (type(b,t) != Pokemon::Fire) {
+                b.chainBp(t, 0x800);
+            }
         } else if (type(b,t) == Pokemon::Fire) {
+            //Fire increased
             b.chainBp(t, 0x1800);
         }
     }
@@ -2663,7 +2702,6 @@ struct AMWaterCompaction : public AM {
         }
 
         if (type(b, t) == Type::Water && !b.hasMaximalStatMod(s, Defense)) {
-            b.sendAbMessage(40,0,s);
             b.inflictStatMod(s, Defense, 2, s, false);
         }
     }
@@ -2679,37 +2717,17 @@ struct AMBattery : public AM {
     }
 };
 
-//Untested. Crashes if a similar ability is called. Doesn't end properly. Type isn't defined at point of message
 struct AMElectricSurge : public AM
 {
     AMElectricSurge() {
         functions["UponSetup"] = &us;
-        functions["EndTurn24.0"] = &et;
     }
 
     static void us (int s, int , BS &b) {
-        QStringList args = poke(b,s)["AbilityArg"].toString().split('_');
-        int type = args[0].toInt();
-        if (b.terrain == type && b.terrainCount > 0) {
-            return;
-        }
-        b.sendMoveMessage(args[1].toInt(), 0, s, 0, type);
-        b.terrain = type;
-        b.terrainCount = (b.hasWorkingItem(s, Item::TerrainExtender) ? 8 : 5);
-        b.battleMemory()["LastSurgedTerrain"] = type;
-        b.battleMemory()["TerrainMessageReference"] = args[1].toInt();
-
-    }
-    static void et(int s, int, BS &b) {
-        int type = b.battleMemory().value("LastSurgedTerrain").toInt();
-        if (b.terrain != type) {
-            return;
-        }
-        b.terrainCount -= 1;
-        if (b.terrainCount <= 0) {
-            int msg = b.battleMemory().value("TerrainMessageReference").toInt();
-            b.sendMoveMessage(msg, 1, s, 0, type);
-            b.terrain = 0;
+        int ter = poke(b,s)["AbilityArg"].toInt();
+        if (ter != b.terrain) {
+            b.sendAbMessage(128, ter-1, s, s, TypeInfo::TypeForTerrain(ter));
+            b.coverField(ter, (b.hasWorkingItem(s, Item::TerrainExtender) ? 8 : 5));
         }
     }
 };
@@ -2721,8 +2739,8 @@ struct AMTriage : public AM
     }
 
     static void pc(int s, int, BS &b) {
-        if (tmove(b,s).category & Move::HealingMove) { // needs testing if every move is covered
-            tmove(b,s).priority = 6; // needs confirmation. Helping Hand has priority +5 and the descripion says that it gains the "highest priority"
+        if (tmove(b,s).category & Move::HealingMove) {
+            tmove(b,s).priority = 3;
         }
     }
 };
@@ -2759,6 +2777,7 @@ struct AMPinch : public AM
     }
 };
 
+//UNTESTED: Weather/status shouldnt trigger
 struct AMBerserk : public AMPinch /*Mostly copied from Pinch Berries*/
 {
     AMBerserk() {
@@ -2794,48 +2813,40 @@ struct AMBerserk : public AMPinch /*Mostly copied from Pinch Berries*/
     }
 };
 
-//UNTESTED
-struct AMTwoWayChange : public AMPinch { /*Zen Mode*/
-    AMTwoWayChange() {
+struct AMZenMode : public AM {
+    AMZenMode() {
         functions["EndTurn29.0"] = &et;
         functions["OnLoss"] = &ol;
+        functions["UponSetup"] = &et;
     }
 
     static void et (int s, int, BS &b) {
-        /* Not using field pokemon since Ditto doesn't gain zen mode/etc.
+        /* Not using field pokemon since Ditto doesn't gain zen mode.
          * So using b.poke(s) instead of fpoke(b,s). */
         Pokemon::uniqueId num = b.poke(s).num();
 
-        QStringList args = poke(b,s)["AbilityArg"].toString().split('_');
-        Pokemon::uniqueId base = args[0];
-        Pokemon::uniqueId alt = args[1];
-        //Perhaps a 3rd arg could be used to define a message set.
-        //if Zen Mode is the only 2 way then AMOneWay can be combined into this by defining a bool for only Zen to use
-
-        if (PokemonInfo::OriginalForme(num) != base || b.preTransPoke(s, base))
+        if (PokemonInfo::OriginalForme(num) != Pokemon::Darmanitan || b.preTransPoke(s, Pokemon::Darmanitan))
             return;
 
         num = fpoke(b,s).id;
-        bool zen = testpinch(s,b,2);
+        bool zen = b.poke(s).lifePoints() * 2 <= b.poke(s).totalLifePoints();
 
         if (num.subnum == 0 && zen) {
-            b.changeForme(b.player(s), b.slotNum(s), alt, true);
+            b.changeForme(b.player(s), b.slotNum(s), Pokemon::Darmanitan_Zen, true);
             b.sendAbMessage(77, 1, s);
         } else if (num.subnum == 1 && !zen) {
-            b.changeForme(b.player(s), b.slotNum(s), base, true);
+            b.changeForme(b.player(s), b.slotNum(s), Pokemon::Darmanitan, true);
             b.sendAbMessage(77, 0, s);
         }
     }
 
     static void ol(int s, int, BS &b) {
-        //Retain form if you're not originally a Darmanitan/etc.
-        QStringList args = poke(b,s)["AbilityArg"].toString().split('_');
-        Pokemon::uniqueId base = args[0];
-        if (b.preTransPoke(s, base))
+        //Retain form if you're not originally a Darmanitan
+        if (b.preTransPoke(s, Pokemon::Darmanitan))
             return;
 
         if (b.pokenum(s).subnum != 0) {
-            b.changeForme(b.player(s), b.slotNum(s), base, true);
+            b.changeForme(b.player(s), b.slotNum(s), Pokemon::Darmanitan, true);
             b.sendAbMessage(77, 0, s);
         }
     }
@@ -2882,28 +2893,41 @@ struct AMWimpOut : public AMPinch /*Mostly copied from Eject Button */
 struct AMDisguise : AM
 {
     AMDisguise() {
-        functions["BeforeTakingDamage"] = &btd;
-        //functions["OnLoss"] = &ol; //maybe GastroAcid/etc. would trigger Diguise and break it? Maybe it isn't affected?
+        functions["OpponentBlock"] = &btd;
+        functions["UponSetup"] = &us;
+        //functions["OnLoss"] = &ol; //maybe GastroAcid/etc. would trigger Disguise and break it? Maybe it isn't affected?
     }
 
-    static void btd(int s, int, BS &b) {
-        //prevent damage once + change form.
-        Pokemon::uniqueId num = b.poke(s).num();
+    static void us(int s, int, BS &b) {
+        //[Tested] disguise is only once per battle
+        if (b.battleMemory()[QString("DisguiseBusted%1%2").arg(b.player(s)).arg(b.currentInternalId(s))].toBool()) {
+            b.changeAForme(s, 1);
+        }
+    }
 
+    static void btd(int s, int t, BS &b) {
+        //[Tested] prevent damage once + change form.
+        Pokemon::uniqueId num = b.poke(s).num();
         if (PokemonInfo::OriginalForme(num) != Pokemon::Mimikyu || b.preTransPoke(s, Pokemon::Mimikyu))
             return;
 
-        //Does it block just damage? Does it block extra effects? Can moves that bypass protect also bypass Disguise?
-        b.sendAbMessage(138, 0, s);
-        //in case after effects I guess? split the messages up.
 
-
-        b.sendAbMessage(138, 1, s);
-        b.changeAForme(s, 1);
+        //[Untested] It should also block self inflicted confuse damage once
+        //[Untested] Can still flinch from fake out
+        //[Untested] fully blocks z moves!
+        //[Untested] Weakness policy doesnt activate
+        //[Untested] Substitute takes priority
+        //[Untested] Weather and entry hazards dont break
+        //[Untested] Does mold breaker break sub? it bypasses disguise but does dealing damage break the disguise still?
+        if (!b.battleMemory()[QString("DisguiseBusted%1%2").arg(b.player(s)).arg(b.currentInternalId(s))].toBool()) {
+            if (tmove(b,t).power > 0 && s != t) {
+                b.sendAbMessage(138, 0, s);
+                turn(b,s)[QString("Block%1").arg(b.attackCount())] = true;
+                b.battleMemory()[QString("DisguiseBusted%1%2").arg(b.player(s)).arg(b.currentInternalId(s))] = true;
+                b.changeAForme(s, 1);
+            }
+        }
     }
-
-    //Messages done based on announcement trailer. Might need tweaking for clarity, such as merging them depending on whether or not messages from move effects get printed between
-    //138 Its disguise served it as a decoy! | %s's diguise was busted!
 };
 
 struct AMInnardsOut : AM
@@ -2926,24 +2950,50 @@ struct AMInnardsOut : AM
     }
 };
 
-//UNTESTED/NOT COMPLETE
+//Unconfirmed stuff aplenty below
 struct AMDancer : AM
 {
     AMDancer() {
-        functions["???"] = &aaf; //would need to figure out what can be used here
+        functions["DanceInvite"] = &aaf;
     }
 
-    static void aaf(int s, int t, BS &b) {
-        //Don't double dance or dance off someone else's repeated dance
-        //Likely won't dance if frozen or sleeping. not sure about paralyze/burn/poison
+    static void aaf(int s, int, BS &b) {
+        //[Tested] Don't double dance or dance off someone else's repeated dance
+        //[Untested] Unconfirmed: Likely won't dance if frozen or sleeping. not sure about paralyze/burn/poison
         if (b.battleMemory().contains("DancingNow") || b.poke(s).status() == Pokemon::Frozen || b.poke(s).status() == Pokemon::Asleep) {
             return;
         }
 
-        if (tmove(b,t).flags & Move::DanceFlag) {
+        int target = -1;
+        int mv = b.battleMemory().value("AnyLastMoveUsed").toInt();
+        if (MoveInfo::Classification(mv, b.gen()) == Move::User) {
+            target = s;
+        } else {
+            //Unconfirmed: dunno. but i need something for now
+            target = b.randomOpponent(s);
+        }
+
+        //Copied off Magic Bounce :)
+        //[Tested] The ability works so far (Fiery/Lunar/Dragon/Quiver tested)
+        if (MoveInfo::Flags(mv, b.gen()) & Move::DanceFlag) {
+            BS::context ctx = turn(b,s);
+            BS::BasicMoveInfo info = tmove(b,s);
+            BS::TurnMemory turnMem = fturn(b, s);
+            int lastMove = fpoke(b,s).lastMoveUsed;
+
+            turn(b,s).clear();
+            MoveEffect::setup(mv,s,target,b);
+
+            turn(b,s)["Target"] = target;
             b.battleMemory()["DancingNow"] = true;
-            //Use Attack would go here.
+            b.sendAbMessage(140, 0, s, type(b,s));
+            b.useAttack(s,mv,true,true);
             b.battleMemory().remove("DancingNow");
+
+            turn(b,s) = ctx;
+            tmove(b,s) = info;
+            fturn(b,s) = turnMem;
+            fpoke(b,s).lastMoveUsed = lastMove;
         }
     }
 };
@@ -2958,7 +3008,7 @@ struct AMBattleBond : public AM {
         if (b.koed(s))
             return;
 
-        if (PokemonInfo::OriginalForme(b.poke(s).num()) != Pokemon::Greninja || b.preTransPoke(s, Pokemon::Greninja))
+        if (PokemonInfo::OriginalForme(b.poke(s).num()) != Pokemon::Greninja_Unbonded || b.preTransPoke(s, Pokemon::Greninja_Unbonded))
             return;
         if (b.pokenum(s).subnum == 0) {
             b.sendAbMessage(141, 0, s);
@@ -2996,7 +3046,7 @@ struct AMReceiver : public AM {
 
     static void opk(int s, int t, BS &b) {
         int ab = b.ability(t);
-        if (ab == Ability::Multitype || ab == Ability::RKSSystem || ab == Ability::FlowerGift || ab == Ability::Illusion || ab == Ability::StanceChange) {
+        if (AbilityInfo::abFlags(ab) & Ability::ReceiverFlag) {
             return;
         }
         b.sendAbMessage(143, 0, s, t, 0, ab);
@@ -3004,7 +3054,6 @@ struct AMReceiver : public AM {
     }
 };
 
-//UNTESTED
 struct AMLiquidVoice : public AM {
     AMLiquidVoice() {
         functions["MoveSettings"] = &ms;
@@ -3012,13 +3061,11 @@ struct AMLiquidVoice : public AM {
 
     static void ms(int s, int, BS &b) {
         if (tmove(b,s).flags & Move::SoundFlag) {
-            //b.sendMoveMessage(x, 0, s);
             tmove(b,s).type = Pokemon::Water;
         }
     }
 };
 
-//UNTESTED
 struct AMSteelWorker : public AM {
     AMSteelWorker() {
         functions["BasePowerModifier"] = &bpm;
@@ -3026,12 +3073,119 @@ struct AMSteelWorker : public AM {
 
     static void bpm (int s, int, BS &b) {
         if (tmove(b, s).type == poke(b,s)["AbilityArg"].toInt()) {
-            b.chainBp(s, 0x1400);
-            //Does this give Pseudo Stab? What if a steel type has it?
+            b.chainBp(s, 0x1800);
         }
     }
 };
 
+//UNTESTED
+struct AMBeastBoost : public AM {
+    AMBeastBoost() {
+        functions["AfterKoing"] = &ak;
+    }
+
+    static void ak(int s, int, BS &b) {
+        if (b.koed(s))
+            return;
+
+        int bestStat = 1;
+        // 1 = Attack, 2 = Defense, 3 = Sp.Atk, 4 = Sp.Def, 5 = Speed
+        //Start at 2 because Attack is already "best stat" at this point
+        for (int i = 2; i < 6; i++) {
+            if (b.getStat(s, i) > b.getStat(s, bestStat)) {
+                bestStat = i;
+            }
+        }
+        b.inflictStatMod(s, bestStat, 1, s);
+    }
+};
+
+//UNTESTED
+struct AMSchooling : public AM {
+    AMSchooling() {
+        functions["EndTurn29.0"] = &et;
+        functions["UponSetup"] = &et;
+    }
+
+    static void et (int s, int, BS &b) {
+        /* Not using field pokemon since Ditto doesn't gain schooling.
+         * So using b.poke(s) instead of fpoke(b,s). */
+        Pokemon::uniqueId num = b.poke(s).num();
+
+        if (PokemonInfo::OriginalForme(num) != Pokemon::Wishiwashi || b.preTransPoke(s, Pokemon::Wishiwashi))
+            return;
+
+        //Schooling doesn't do anything before level 20.
+        if (b.poke(s).level() < 20) {
+            return;
+        }
+
+        num = fpoke(b,s).id;
+        //1%-24% = Solo Form, 25%-100% = School form
+        bool school = b.poke(s).lifePoints() >= b.poke(s).totalLifePoints() / 4;
+        if (num.subnum == 0 && school) {
+            b.changeForme(b.player(s), b.slotNum(s), Pokemon::Wishiwashi_School, true);
+            b.sendAbMessage(147, 0, s);
+        } else if (num.subnum == 1 && !school) {
+            b.changeForme(b.player(s), b.slotNum(s), Pokemon::Wishiwashi, true);
+            b.sendAbMessage(147, 1, s);
+        }
+    }
+};
+
+//UNTESTED
+struct AMShieldsDown : public AM {
+    AMShieldsDown() {
+        functions["EndTurn29.0"] = &et;
+        functions["UponSetup"] = &et;
+    }
+
+    static void et (int s, int, BS &b) {
+        /* Not using field pokemon since Ditto doesn't gain shields down.
+         * So using b.poke(s) instead of fpoke(b,s). */
+        Pokemon::uniqueId num = b.poke(s).num();
+
+        if (PokemonInfo::OriginalForme(num) != Pokemon::Minior || b.preTransPoke(s, Pokemon::Minior))
+            return;
+
+
+        num = fpoke(b,s).id;
+        bool shield = b.poke(s).lifePoints() * 2 <= b.poke(s).totalLifePoints();
+        if (num.subnum == 0 && shield) {
+            b.changeForme(b.player(s), b.slotNum(s), Pokemon::Minior_Red, true);
+            b.sendAbMessage(149, 0, s);
+        } else if (num.subnum > 1 && !shield) {
+            b.changeForme(b.player(s), b.slotNum(s), Pokemon::Minior, true);
+            b.sendAbMessage(149, 1, s);
+        }
+    }
+};
+
+//UNTESTED
+struct AMPowerConstruct : public AM {
+    AMPowerConstruct() {
+        functions["EndTurn29.0"] = &et;
+        functions["UponSetup"] = &et;
+    }
+
+    static void et (int s, int, BS &b) {
+        /* Not using field pokemon since Ditto doesn't gain shields down.
+         * So using b.poke(s) instead of fpoke(b,s). */
+        Pokemon::uniqueId num = b.poke(s).num();
+
+        if (num != Pokemon::Zygarde_10_Incomplete || b.preTransPoke(s, Pokemon::Zygarde_10_Incomplete) ||
+                num != Pokemon::Zygarde_50_Incomplete || b.preTransPoke(s, Pokemon::Zygarde_50_Incomplete))
+            return;
+
+
+        num = fpoke(b,s).id;
+        bool complete = b.poke(s).lifePoints() * 2 <= b.poke(s).totalLifePoints();
+        if ((num == Pokemon::Zygarde_10_Incomplete || num == Pokemon::Zygarde_50_Incomplete) && complete) {
+            b.changeForme(b.player(s), b.slotNum(s), Pokemon::Zygarde_Complete, true);
+            b.sendAbMessage(148, 0, s);
+        }
+    }
+};
 //In case it is coded like Analytic instead of Tinted Lens. If so, remove from battle.cpp around L3656
 /*struct AMStakeout : AM
 {
@@ -3159,7 +3313,7 @@ void AbilityEffect::init()
     REGISTER_AB(74, WeakArmor);
     REGISTER_AB(75, VictoryStar);
     REGISTER_AB(76, Defeatist);
-    REGISTER_AB(77, TwoWayChange); /*Zen Mode*/
+    REGISTER_AB(77, ZenMode);
     REGISTER_AB(78, PickPocket);
     REGISTER_AB(79, SheerForce);
     REGISTER_AB(80, Defiant); /*Defiant, Competitive*/
@@ -3223,18 +3377,19 @@ void AbilityEffect::init()
     REGISTER_AB(135, WimpOut); /* Emergency Exit*/ //does player get a choice on switch in? does ability activate behind sub? eject button or ability first?
     REGISTER_AB(136, SurgeSurfer);
     REGISTER_AB(137, WaterCompaction);
-    REGISTER_AB(138, Disguise);
+    REGISTER_AB(138, Disguise); //Unconfirmed: Needs ability flags
     REGISTER_AB(139, InnardsOut);
     REGISTER_AB(140, Dancer);
-    REGISTER_AB(141, BattleBond); //how strong is the boost? what is interaction with ability null/switch (gastro, etc.)? does boost to water shuriken get retained when switching out?
-    REGISTER_AB(142, Receiver); /*Power of Alchemy*/
+    REGISTER_AB(141, BattleBond); //Unconfirmed: Needs ability flags; does boost to water shuriken get retained when switching out?
+    REGISTER_AB(142, Receiver); /*Power of Alchemy*/ //Unconfirmed: Needs ability flags
     REGISTER_AB(143, SoulHeart);
-    //REGISTER_AB(144, BeastBoost);
+    REGISTER_AB(144, BeastBoost);
     REGISTER_AB(145, LiquidVoice);
     REGISTER_AB(146, SteelWorker);
-    //REGISTER_AB(147, Schooling);
-    //REGISTER_AB(148, PowerConstruct);
-    //REGISTER_AB(149, ShieldsDown);
+    REGISTER_AB(147, Schooling);  //Unconfirmed: Needs ability flags
+    REGISTER_AB(148, PowerConstruct); //Unconfirmed: Needs ability flags
+    REGISTER_AB(149, ShieldsDown); //Unconfirmed: Needs ability flags
 
-    //NOT DONE: Disguise, Dancer, Steelworker, Shields Down, Power Construct, Schooling, Beast Boost
+    //UNTESTED: Comatose
+    //ALMOST DONE: Disguise, Dancer
 }

@@ -292,17 +292,17 @@
 578 13-4_248_353#phantom force
 581 157-7#Trick or Treat
 584 200#Belch
-588 201#Electriy Terrain
+588 240-1#Electric Terrain
 589 202#Electrify
 590 203#Fairy Lock
 591 204#Fell Stinger
 592 213#Flower Shield
-593 205#Grassy Terrain
+593 240-2#Grassy Terrain
 594 217#Ion Deluge
 595 206#King's Shield
-597 216#Magnetic Flux
+597 216-2_4#Magnetic Flux
 598 207#Mat Block
-599 208#Misty Terrain
+599 240-3#Misty Terrain
 600 140#Parting Shot
 601 215#Powder
 603 214#Rototiller
@@ -316,10 +316,13 @@
 616 175#Thousand Arrows
 617 12#Thousand Waves-- Has Mean Look effect
 621 219#Hyperpsace Fury-- breaks protect
+622 231#core enforcer
+626 231#moongeist beam
 627 130-2#Nature's Madness
 628 221#Revelation Dance
 629 220#Shell Trap
-633 222#psychic terrain
+631 231#sunsteel strike
+633 240-4#psychic terrain
 634 223#throat chop
 635 236#Aurora Veil
 636 224#laser focus
@@ -332,13 +335,13 @@
 647 227#Baneful Bunker
 649 228#Floral Healing
 650 229#Strength Sap
-651 48#Spotlight
-653 231#Gear Up
+651 #Spotlight
+653 216-1_3#Gear Up
 654 232#Pollen Puff
 655 12#Anchor Shot
 658 185#Power Trip, stored power clone
 659 233#Burn Up
-660 55-5#Speed Swap
+660 239#Speed Swap
 662 234#Purify
 663 235#Beak Blast
 665 14#Psychic Fangs

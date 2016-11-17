@@ -67,6 +67,7 @@ QVector<QSet<int> > ItemInfo::m_GenItems;
 QHash<int,QString> ItemInfo::m_ItemDesc;
 QHash<int,QString> ItemInfo::m_BerryDesc;
 QHash<Pokemon::uniqueId,int> ItemInfo::m_StoneFormes;
+QHash<int,int> ItemInfo::m_ZCrystalTypes;
 
 QHash<int, QString> TypeInfo::m_Names;
 QString TypeInfo::m_Directory;
@@ -85,6 +86,7 @@ QVector<QHash<int,AbilityInfo::Effect> > AbilityInfo::m_Effects;
 QHash<int, QStringList> AbilityInfo::m_Messages;
 QHash<int,int> AbilityInfo::m_OldAbilities;
 QHash<int,bool> AbilityInfo::m_moldBreaker;
+QHash<int,int> AbilityInfo::m_abFlags;
 
 QHash<int, QString> GenderInfo::m_Names;
 QString GenderInfo::m_Directory;
@@ -2312,19 +2314,6 @@ QString MoveInfo::path(const QString &file)
     return m_Directory+file;
 }
 
-int MoveInfo::DanceType (Pokemon::uniqueId poke) {
-    int type = Pokemon::Normal;
-    if (PokemonInfo::OriginalForme(poke) == Pokemon::Oricorio) {
-        switch(poke.toPokeRef()) {
-            case Pokemon::Oricorio: type = Pokemon::Fire; break;
-            case Pokemon::Oricorio_Pau: type = Pokemon::Psychic; break;
-            case Pokemon::Oricorio_Sensu: type = Pokemon::Ghost; break;
-            case Pokemon::Oricorio_PomPom: type = Pokemon::Electric; break;
-        }
-    }
-    return type;
-}
-
 #undef move_find
 #undef move_find2
 
@@ -2439,6 +2428,7 @@ void ItemInfo::loadNames()
 void ItemInfo::loadStoneFormes()
 {
     fill_uid_int(m_StoneFormes, path("item_for_forme.txt"));
+    fill_double(m_ZCrystalTypes, path("crystal_types.txt")); //no sense making another function to load 1 thing
 }
 
 void ItemInfo::loadMessages()
@@ -2731,7 +2721,15 @@ int ItemInfo::MemoryChipType(int itemnum)
     return effects.front().args.toInt();
 }
 
-int ItemInfo::CrystalMove(int itemnum)
+int ItemInfo::ZCrystalType(int itemnum)
+{
+    if (ItemInfo::isZCrystal(itemnum)) {
+        return m_ZCrystalTypes.value(itemnum);
+    }
+    return 0;
+}
+
+int ItemInfo::ZCrystalMove(int itemnum)
 {
     const auto &effects = Effects(itemnum, GenInfo::GenMax());
     if (effects.size() == 0 || !isZCrystal(itemnum)) {
@@ -2773,6 +2771,32 @@ int ItemInfo::PlateForType(int type)
         Item::NoItem
     };
     return plates[type];
+}
+
+int ItemInfo::MemoryChipForType(int type)
+{
+    static const int chips[] = {
+        Item::NoItem,
+        Item::FightingMemory,
+        Item::FlyingMemory,
+        Item::PoisonMemory,
+        Item::GroundMemory,
+        Item::RockMemory,
+        Item::BugMemory,
+        Item::GhostMemory,
+        Item::SteelMemory,
+        Item::FireMemory,
+        Item::WaterMemory,
+        Item::GrassMemory,
+        Item::ElectricMemory,
+        Item::PsychicMemory,
+        Item::IceMemory,
+        Item::DragonMemory,
+        Item::DarkMemory,
+        Item::FairyMemory,
+        Item::NoItem
+    };
+    return chips[type];
 }
 
 int ItemInfo::DriveType(int itemnum)
@@ -2985,18 +3009,40 @@ int TypeInfo::TypeForWeather(int weather) {
     }
 }
 
+int TypeInfo::TypeForTerrain(int terrain){
+    switch(terrain) {
+    case ElectricTerrain: return Type::Electric;
+    case GrassyTerrain: return Type::Grass;
+    case MistyTerrain: return Type::Fairy;
+    case PsychicTerrain: return Type::Psychic;
+    default: return Type::Normal;
+    }
+}
+
 QString TypeInfo::weatherName(int weather)
 {
-    // Supposed to be lowercase and unique.
+    // Supposed to start lowercase. needs to be unique also
     switch(weather) {
     case Hail: return QObject::tr("hailstorm");
     case Rain: return QObject::tr("rain");
     case SandStorm: return QObject::tr("sandstorm");
     case Sunny: return QObject::tr("sunny");
-    case StrongSun: return QObject::tr("intense sun");
-    case StrongRain: return QObject::tr("heavy rain");
-    case StrongWinds: return QObject::tr("strong winds");
+    case StrongSun: return QObject::tr("intense Sun");
+    case StrongRain: return QObject::tr("heavy Rain");
+    case StrongWinds: return QObject::tr("strong Winds");
     default: return QObject::tr("normal", "weather");
+    }
+}
+
+QString TypeInfo::terrainName(int terrain)
+{
+    // Supposed to start lowercase.
+    switch(terrain) {
+    case ElectricTerrain: return QObject::tr("electric Terrain");
+    case GrassyTerrain: return QObject::tr("grassy Terrain");
+    case MistyTerrain: return QObject::tr("misty Terrain");
+    case PsychicTerrain: return QObject::tr("psychic Terrain");
+    default: return QObject::tr("normal", "terrain");
     }
 }
 
@@ -3263,6 +3309,7 @@ bool AbilityInfo::Exists(int ability, Pokemon::gen gen)
 void AbilityInfo::loadEffects()
 {
     fill_int_bool(m_moldBreaker, path("mold_breaker.txt"));
+    fill_double(m_abFlags, path("ability_flags.txt"));
 
     m_Effects.clear();
     m_Effects.resize(GenInfo::NumberOfGens());
@@ -3349,6 +3396,11 @@ int AbilityInfo::NumberOfAbilities(Pokemon::gen g)
         }
         return std::min(hc, total); //safety check, in case db was edited
     }
+}
+
+int AbilityInfo::abFlags(int abnum)
+{
+    return m_abFlags[abnum];
 }
 
 void GenderInfo::init(const QString &dir)

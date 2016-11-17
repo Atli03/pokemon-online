@@ -38,6 +38,12 @@
 25:4:D Pikachu-Ph. D
 25:5:D Pikachu-Libre
 25:6:A Pikachu-Cosplay
+25:7:A Pikachu-First Hat
+25:8:A Pikachu-Second Hat
+25:9:A Pikachu-Third Hat
+25:10:A Pikachu-Fourth Hat
+25:11:A Pikachu-Fifth Hat
+25:12:A Pikachu-Sixth Hat
 26:0 Raichu
 26:1:L Alolan Raichu
 27:0 Sandshrew
@@ -814,7 +820,8 @@
 656:0 Froakie
 657:0 Frogadier
 658:0 Greninja
-658:1:AD Ash Greninja
+658:1:AD Greninja-Unbonded
+658:2:A Ash Greninja
 659:0 Bunnelby
 660:0 Diggersby
 661:0 Fletchling
@@ -924,8 +931,10 @@
 716:0 Xerneas
 717:0 Yveltal
 718:0 Zygarde
-718:1 Zygarde-10%
-718:2 Zygarde-Complete
+718:1:AD Zygarde-10%
+718:2:AD Zygarde-10% Uncomplete
+718:3:AD Zygarde-50% Uncomplete
+718:4:A Zygarde-Complete
 719:0:H Diancie
 719:1:M Mega Diancie
 720:0 Hoopa
@@ -959,8 +968,8 @@
 744:0 Rockruff
 745:0 Lycanroc
 745:1:AD Lycanroc-Midnight
-746:0 Wishiwashi
-746:1 Wishiwashi-School
+746:0:B Wishiwashi
+746:1:A Wishiwashi-School
 747:0 Mareanie
 748:0 Toxapex
 749:0 Mudbray
@@ -1005,7 +1014,7 @@
 773:15:AD Silvally-Dragon
 773:16:AD Silvally-Dark
 773:17:AD Silvally-Fairy
-774:0 Minior
+774:0:B Minior
 774:1:A Minior-Red
 774:2:A Minior-Orange
 774:3:A Minior-Yellow

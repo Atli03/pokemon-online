@@ -45,7 +45,7 @@
 70 %s's %a absorbs the attack!|%s's %a made the attack useless!
 71 %s's Wonder Guard blocks the attack!
 74 %s lost part of its armor!
-77 %s's %a ended!|%s's %a triggered!
+77 %s's Zen Mode ended!|%s's Zen Mode triggered!
 78 %s stole %f's %i!
 80 %a sharply raised %s's Attack!|%a sharply raised %s's Defense!|%a sharply raised %s's Sp. Att.!|%a sharply raised %s's Sp. Def.!|%a sharply raised %s's Speed!
 81 %s transformed into %p!
@@ -76,16 +76,10 @@
 125 %s's Cheek Pouch provided extra nutrients to restore HP!
 126 %s's Desolate Land turned the sunlight extremely harsh!|%s's Primordial Sea causes a heavy rain to fall!|%s's Delta Stream stirs up a mysterious air current to protect Flying-type Pokémon!|The extremely harsh sunlight was not lessened at all!|There is no relief from this heavy rain!|The strong winds prevent the atmospheric conditions from changing!|The Water-Type attack evaporated in the harsh sunlight.|The Fire-Type attack fizzled out in the heavy rain!
 127 %s is drowsing!
-129 %s's Dazzling prevents %t from using %m!
-130 <<Berserk>>
-131 <<Battery (unlikely needed)>>
-132 <<Fluffy (unlikely needed, except maybe Fire interaction)>>
-133 <<Stamina>>
-135 <<Wimp Out>>
-136 <<Surge Surfer (unlikely needed)>>
-138 %s's disguise served it as a decoy! | %s's diguise was busted!
+129 %t cannot use %m!
+138 %s's disguise served it as a decoy and was busted!
 139 %s's Innards Out hurts %f!
-140 <<Dancer: %s danced to the beat as well!>>
+140 %s started to dance too!
 141 %s became fully charged due to its bond with %ts!|%s became Ash-Greninja!
 142 %s's Soul-Heart raises its Special Attack!
 143 %f's %a was taken over by %s!

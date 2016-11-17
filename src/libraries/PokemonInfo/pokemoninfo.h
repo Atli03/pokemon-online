@@ -285,7 +285,6 @@ public:
     //static QString Effect(int movenum, int gen);
     static QString SpecialEffect(int movenum, Pokemon::gen gen);
     static QSet<int> Moves(Pokemon::gen gen);
-    static int DanceType(Pokemon::uniqueId poke);
 private:
     static QHash<int, QString> m_Names;
     static QHash<QString, int> m_LowerCaseMoves;
@@ -376,9 +375,11 @@ public:
     static bool isUseful(int itemnum);
     static int PlateType(int itemnum);
     static int MemoryChipType(int itemnum);
-    static int CrystalMove(int itemnum);
+    static int ZCrystalType(int itemnum);
+    static int ZCrystalMove(int itemnum);
     static Pokemon::uniqueId MegaStoneForme(int itemnum);
     static int PlateForType(int type);
+    static int MemoryChipForType(int type);
     static int DriveType(int itemnum);
     static int DriveForme(int itemnum);
     static int DriveForForme(int forme);
@@ -417,6 +418,7 @@ private:
     static QHash<int,QString> m_ItemDesc;
     static QHash<int,QString> m_BerryDesc;
     static QHash<Pokemon::uniqueId,int> m_StoneFormes;
+    static QHash<int,int> m_ZCrystalTypes;
 
     static void loadNames();
     static void loadEffects();
@@ -442,8 +444,10 @@ public:
     static int Eff(int type_attack, int type_defend, Pokemon::gen gen = GenInfo::GenMax()); /* Returns how effective it is: 4 = super, 2 = normal, 1 = not much, 0 = ineffective */
     static int NumberOfTypes();
     static int TypeForWeather(int weather);
+    static int TypeForTerrain(int terrain);
     static int Category(int type);
     static QString weatherName(int weather);
+    static QString terrainName(int terrain);
 private:
     enum Weather
     {
@@ -455,6 +459,15 @@ private:
         StrongSun = 5,
         StrongRain = 6,
         StrongWinds = 7
+    };
+
+    enum Terrain
+    {
+        NoTerrain = 0,
+        ElectricTerrain = 1,
+        GrassyTerrain = 2,
+        MistyTerrain = 3,
+        PsychicTerrain = 4
     };
 
     static QHash<int, QString> m_Names;
@@ -539,6 +552,7 @@ public:
     static bool Exists(int ability, Pokemon::gen gen);
     static int ConvertFromOldAbility(int oldability);
     static bool moldBreakable(int abnum);
+    static int abFlags(int abnum);
 private:
     static QHash<int, QString> m_Names;
     static QString m_Directory;
@@ -548,6 +562,7 @@ private:
     //static QHash<int,QString> m_Desc;
     static QHash<int,QString> m_BattleDesc;
     static QHash<int, bool> m_moldBreaker;
+    static QHash<int, int> m_abFlags;
 
     static void loadNames();
     static void loadMessages();

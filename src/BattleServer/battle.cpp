@@ -198,11 +198,11 @@ void BattleSituation::initializeEndTurnFunctions()
 
         24.0 Gravity ends
 
-        25.0 Trick Room ends
+        25.0 Terrains end or something, unconfirmed
 
-        26.0 Wonder Room ends
-
-        27.0 Magic Room ends
+        26.0 Trick Room ends
+        26.1 Wonder Room ends
+        26.2 Magic Room ends
 
         28.0 Uproar message
         28.1 Speed Boost, Bad Dreams, Harvest, Moody
@@ -218,6 +218,7 @@ void BattleSituation::initializeEndTurnFunctions()
         31.0 Slow Start, Forecast
         */
         ownEndFunctions.push_back(QPair<int, VoidFunction>(1, &BattleSituation::endTurnWeather));
+        ownEndFunctions.push_back(QPair<int, VoidFunction>(25, &BattleSituation::endTurnTerrain));
         ownEndFunctions.push_back(QPair<int, VoidFunction>(30, &BattleSituation::requestEndOfTurnSwitchIns));
 
         addEndTurnEffect(AbilityEffect, 5, 1); /* Shed skin, Hydration, Healer */
@@ -800,7 +801,7 @@ void BattleSituation::analyzeChoices()
     std::vector<int> switches;
 
     std::vector<int> playersByOrder = sortedBySpeed();
-    //UNTESTED: Gen 7 mega evolution changes turn order now.
+    //Gen 7 mega evolution changes turn order now.
     if (gen() >= 7) {
         foreach(int i, playersByOrder) {
             if (choice(i).attackingChoice() || choice(i).moveToCenterChoice()) {
@@ -1003,11 +1004,9 @@ void BattleSituation::sendPoke(int slot, int pok, bool silent)
         int type = Type::Normal;
         if (ItemInfo::isPlate(p.item())) {
             type = ItemInfo::PlateType(p.item());
-        }
-        //TODO: Code Z Crystal Types
-        /*else if (ItemInfo::isZCrystal(p.item())) {
+        } else if (gen() >= 7 && ItemInfo::isZCrystal(p.item())) {
             type = ItemInfo::ZCrystalType(p.item());
-        }*/
+        }
         if (type != Type::Normal) {
             changeAForme(slot, type);
         }
@@ -1374,7 +1373,7 @@ void BattleSituation::testCritical(int player, int target)
 
     critical = coinflip(minch, 48);
 
-    bool isCrit;
+    bool isCrit = false;
     if (pokeMemory(player).contains("LaserFocused") && pokeMemory(player).value("LaserFocusEnd").toInt() >= turn()) {
         isCrit = true;
     }
@@ -1607,7 +1606,7 @@ void BattleSituation::useAttack(int player, int move, bool specialOccurence, boo
     //Down here so it doesnt get overridden but still defines it before the announcement
     if (pokeMemory(player).value("ZMoveTurn") == turn()) {
         sendItemMessage(68, player);
-        attack = ItemInfo::CrystalMove(poke(player).item());
+        attack = ItemInfo::ZCrystalMove(poke(player).item());
         callieffects(player, player, "MoveSettings"); //Z Moves
     }
 
@@ -1914,8 +1913,8 @@ ppfunction:
             if (target != player) {
                 callaeffects(target,player,"OpponentBlock");
                 callieffects(target,player,"OpponentBlock"); //Safety Goggles
-                if (!isFlying(target) && terrainCount > 0 && terrain == Type::Psychic && tmove(player).priority > 0) {
-                    sendMoveMessage(222,2,target,Type::Psychic);
+                if (!isFlying(target) && terrain == PsychicTerrain && tmove(player).priority > 0) {
+                    sendMoveMessage(222,2,target,Type::Psychic,player,tmove(player).attack);
                     calleffects(player,target,"AttackSomehowFailed");
                     continue;
                 }
@@ -2180,6 +2179,11 @@ trueend:
         callaeffects(target, target, "AfterAttackFinished"); //Immunity & such
         turnMemory(target)["HadSubstitute"] = false;
     }
+    foreach(int target, sortedBySpeed()) {
+        if (target != player) {
+            callaeffects(target, target, "DanceInvite");
+        }
+    }
 }
 
 void BattleSituation::useItem(int player, int item, int target, int attack)
@@ -2334,11 +2338,9 @@ bool BattleSituation::hasWorkingAbility(int player, int ab)
             }
             int move = tmove(attacker()).attack;
             if (move == Move::MoongeistBeam || move == Move::SunsteelStrike) {
-                sendMoveMessage(239,0,attacker(),0,player); //UNTESTED. Might look really bad
                 return false;
             }
             if (move == Move::CoreEnforcer && hasMoved(attacker())) {
-                sendMoveMessage(239,0,attacker(),0,player); //UNTESTED. Might look really bad
                 return false;
             }
         }
@@ -2628,11 +2630,11 @@ bool BattleSituation::canGetStatus(int target, int status, int inflicter) {
     if (hasWorkingAbility(target, Ability::LeafGuard) && isWeatherWorking(Sunny) && !(tmove(target).attack == Move::Rest && gen().num == 4))
         //Gen 4 allows the use of Rest with working Leaf Guard.
         return false;
-    if (!isFlying(target) && terrainCount > 0 && terrain == Type::Fairy) {
+    if (!isFlying(target) && terrain == MistyTerrain) {
         //Rest, 2nd part of Yawn, Status Orbs, Effect Spore, Flame Body, Poison Point, Psycho Shift
         return false;
     }
-    if (hasWorkingAbility(target, Ability::Comatose) && status != Pokemon::Asleep) {
+    if (hasWorkingAbility(target, Ability::Comatose)) {
         sendAbMessage(148,0,target);
         return false;
     }
@@ -2663,7 +2665,7 @@ bool BattleSituation::canGetStatus(int target, int status, int inflicter) {
             //sendMoveMessage(141,4,target); //Needs to remove "But it failed" from Rest first
             return false;
         }
-        if (!isFlying(target) && terrainCount > 0 && terrain == Type::Electric) {
+        if (!isFlying(target) && terrain == ElectricTerrain) {
             sendMoveMessage(201,3,target);
             return false;
         }
@@ -2697,7 +2699,7 @@ bool BattleSituation::canGetStatus(int target, int status, int inflicter) {
         if (hasWorkingAbility(target, Ability::Immunity)) {
             return false;
         }
-        //Unconfirmed: As far as we know, Corrosion only allows poisoning Steels and Poison types. Should it bypass other abilities too? (Comatose, Immunity, etc.)
+        //Unconfirmed: As far as we know, Corrosion only allows poisoning Steels and Poison types. Should it bypass other abilities too? (Immunity, etc.)
         //If so, add "&& status == Pokemon::Poisoned" to the conditional and move it to the correct placing (aka, the top if it bypasses everything)
         if (inflicter != target && hasWorkingAbility(inflicter, Ability::Corrosion)) {
             return true;
@@ -2805,7 +2807,7 @@ void BattleSituation::inflictStatus(int player, int status, int attacker, int mi
                 return;
             }
         }
-        if(std::abs(terrain) == Type::Fairy && terrainCount > 0 && !isFlying(player)) {
+        if(terrain == MistyTerrain && !isFlying(player)) {
             sendMoveMessage(208, 2, player,Pokemon::Fairy, player, tmove(player).attack);
             return;
         }
@@ -2882,6 +2884,11 @@ void BattleSituation::inflictConfused(int player, int attacker, bool tell)
         return;
     }
 
+    if(gen() >= 7 && terrain == MistyTerrain && !isFlying(player)) {
+        sendMoveMessage(208, 2, player,Pokemon::Fairy, player, tmove(player).attack);
+        return;
+    }
+
     poke(player).addStatus(Pokemon::Confused);
     pokeMemory(player)["ConfusedCount"] = randint(4) + 1;
 
@@ -2897,6 +2904,17 @@ void BattleSituation::callForth(int weather, int turns)
         this->weather = weather;
         foreach (int i, sortedBySpeed()) {
             callaeffects(i,i,"WeatherChange");
+        }
+    }
+}
+
+void BattleSituation::coverField(int terrain, int turns)
+{
+    terrainCount = turns;
+    if (terrain != this->terrain) {
+        this->terrain = terrain;
+        foreach (int i, sortedBySpeed()) {
+            callieffects(i,i,"TerrainChange");
         }
     }
 }
@@ -2924,7 +2942,7 @@ void BattleSituation::endTurnWeather()
             } else {
                 immuneTypes << Pokemon::Rock << Pokemon::Ground << Pokemon::Steel;
             }
-            foreach (int i, speedsVector) {
+            foreach (int i, sortedBySpeed()) {
                 callaeffects(i,i,"WeatherSpecial");
                 callieffects(i,i,"WeatherSpecial");
                 if (!turnMemory(i).contains("WeatherSpecialed") && (weather == Hail || weather == SandStorm) && getTypes(i).toList().toSet().intersect(immuneTypes).isEmpty()
@@ -2938,6 +2956,37 @@ void BattleSituation::endTurnWeather()
         }
         if (count > 0) {
             weatherCount = count;
+        }
+    }
+}
+
+void BattleSituation::endTurnTerrain()
+{
+    int terrain = this->terrain;
+
+    if (terrain == NoTerrain) {
+        return;
+    }
+
+    int count = terrainCount - 1;
+    if (count == 0) {
+        notify(All, TerrainMessage, Player1, qint8(EndTerrain), qint8(terrain));
+        coverField(NoTerrain, -1);
+    } else {
+        if (terrain == GrassyTerrain) {
+            bool healed = false;
+            foreach (int i, sortedBySpeed()) {
+                if (!isFlying(i)) {
+                    healLife(i, poke(i).totalLifePoints()/16);
+                    healed = true;
+                }
+            }
+            if (healed) {
+                sendMoveMessage(205,2,0,Pokemon::Grass);
+            }
+        }
+        if (count > 0) {
+            terrainCount = count;
         }
     }
 }
@@ -3717,14 +3766,14 @@ int BattleSituation::calculateDamage(int p, int t)
         }
 
         /* Apply Terrain mods, no idea if in the right spot */
-        if (std::abs(terrain) == Type::Fairy && type == Type::Dragon && !isFlying(oppPlayer)) {
+        if (terrain == MistyTerrain && type == Type::Dragon && !isFlying(oppPlayer)) {
             damage = applyMod(damage, 0x800);
         }
-        if (std::abs(terrain) == Type::Grass && (attackused == Move::Bulldoze || attackused == Move::Earthquake || attackused == Move::Magnitude)) {
+        if (terrain == GrassyTerrain && (attackused == Move::Bulldoze || attackused == Move::Earthquake || attackused == Move::Magnitude)) {
             damage = applyMod(damage, 0x800);
         }
         //Terrains boost moves of same type
-        if (terrainCount > 0 && terrain > 0 && terrain < Type::Curse && terrain == type && !isFlying(p)) {
+        if (TypeInfo::TypeForTerrain(terrain) == type && !isFlying(p)) {
             damage = applyMod(damage, 0x1800);
         }
 
@@ -3768,12 +3817,21 @@ int BattleSituation::calculateDamage(int p, int t)
          */
         int finalmod = 0x1000;
         //*** 1 ***//
-        /* Reflect, Light Screen */
-        if (!crit && !hasWorkingAbility(p, Ability::Infiltrator) && teamMemory(this->player(t)).value("Barrier" + QString::number(cat) + "Count").toInt() > 0) {
-            if (!multiples()) {
-                finalmod = chainMod(finalmod, 0x800);
-            } else {
-                finalmod = chainMod(finalmod, 0xA8F);
+        /* Reflect, Light Screen, Aurora Veil */
+        if (!crit && !hasWorkingAbility(p, Ability::Infiltrator)) {
+            if (teamMemory(this->player(t)).value("Barrier" + QString::number(cat) + "Count").toInt() > 0) {
+                if (!multiples()) {
+                    finalmod = chainMod(finalmod, 0x800);
+                } else {
+                    finalmod = chainMod(finalmod, 0xA8F);
+                }
+            }
+            if (teamMemory(this->player(t)).value("AuroraVeilCount").toInt() > 0) {
+                if (!multiples()) {
+                    finalmod = chainMod(finalmod, 0x800);
+                } else {
+                    finalmod = chainMod(finalmod, 0xA8F);
+                }
             }
         }
         //*** 2 ***//
@@ -4876,10 +4934,47 @@ bool BattleSituation::canUseZMove (int slot)
     }
     int item = poke(slot).item();
     if (ItemInfo::isZCrystal(item)) {
-        //A Pokemon must have a move of equal type to the Z Crystal in order to use.
-        //Special cases may apply
-        int zmove = ItemInfo::CrystalMove(item);
-        int ztype = MoveInfo::Type(zmove, gen());
+        int zmove = ItemInfo::ZCrystalMove(item);
+        Pokemon::uniqueId pk = poke(slot).num();
+        switch(zmove) {
+            case Move::Catastropika:
+                return pk == Pokemon::Pikachu && hasMove(slot, Move::VoltTackle);
+            break;
+            case Move::StokedSparkSurfer:
+                return pk == Pokemon::Raichu_Alolan && hasMove(slot, Move::Thunderbolt);
+            break;
+            case Move::ExtremeEvoboost:
+                return pk == Pokemon::Eevee && hasMove(slot, Move::LastResort);
+            break;
+            case Move::PulversingPancake:
+                return pk == Pokemon::Snorlax && hasMove(slot, Move::GigaImpact);
+            break;
+            case Move::GenesisSupernova:
+                return pk == Pokemon::Mew && hasMove(slot, Move::Psychic);
+            break;
+            case Move::GuardianofAlola:
+                return (pk == Pokemon::Tapu_Bulu || pk == Pokemon::Tapu_Koko || pk == Pokemon::Tapu_Lele || pk == Pokemon::Tapu_Fini)
+                        && hasMove(slot, Move::NaturesMadness);
+            break;
+            case Move::SinisterArrowRaid:
+                return pk == Pokemon::Decidueye && hasMove(slot, Move::SpiritShackle);
+            break;
+            case Move::MaliciousMoonsault:
+                return pk == Pokemon::Incineroar && hasMove(slot, Move::DarkestLariat);
+            break;
+            case Move::OceanicOperetta:
+                return pk == Pokemon::Primarina && hasMove(slot, Move::SparklingAria);
+            break;
+            case Move::Soul_Stealing7_StarStrike:
+                return pk == Pokemon::Marshadow && hasMove(slot, Move::SpectralThief);
+            break;
+            case Move::_10_000_000VoltThunderBolt:
+                //UNTESTED: we dont have cap pikachu fully in yet
+                return false && hasMove(slot, Move::Thunderbolt);
+            break;
+        }
+        //If its not a special case then a Pokemon must have a move of equal type to the Z Crystal in order to use.
+        int ztype = ItemInfo::ZCrystalType(item);
         for (int i = 0; i < 4; i++) {
             if (MoveInfo::Type(move(slot, i), gen()) == ztype) {
                 return true;
